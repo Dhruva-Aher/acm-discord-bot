@@ -140,7 +140,7 @@ class AcmHubBot(commands.Bot):
     async def close(self) -> None:
         """Shut down in dependency order: scheduler, gateway, HTTP, database."""
         logger.info("bot.shutdown_started")
-        self.scheduler.shutdown()
+        await self.scheduler.shutdown()
         await super().close()
         for collector in self.collectors:
             await collector.aclose()

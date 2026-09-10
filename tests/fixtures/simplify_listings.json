@@ -1,0 +1,315 @@
+[
+  {
+    "active": true,
+    "category": "Software",
+    "company_name": "TikTok",
+    "company_url": "https://simplify.jobs/c/TikTok",
+    "date_posted": 1768443444,
+    "date_updated": 1768443444,
+    "degrees": [
+      "Bachelor's",
+      "Master's"
+    ],
+    "id": "e7d90cdc-955f-4bb2-8a94-81ea48265d84",
+    "is_visible": true,
+    "locations": [
+      "San Jose, CA"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Software Engineer Intern - Ads Infrastructure",
+    "url": "https://lifeattiktok.com/search/7572665884037826869"
+  },
+  {
+    "active": true,
+    "category": "AI/ML/Data",
+    "company_name": "ByteDance",
+    "company_url": "https://simplify.jobs/c/ByteDance",
+    "date_posted": 1768529643,
+    "date_updated": 1768529643,
+    "degrees": [
+      "PhD"
+    ],
+    "id": "2f581eb5-e5d9-4bc0-a9b6-54a4ea8ad53d",
+    "is_visible": true,
+    "locations": [
+      "San Jose, CA"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Spring 2026"
+    ],
+    "title": "Research Scientist Intern - Security for AI - 2026 Start",
+    "url": "https://jobs.bytedance.com/en/position/7595676762475415861/detail"
+  },
+  {
+    "active": true,
+    "category": "Quant",
+    "company_name": "Point72",
+    "company_url": "https://simplify.jobs/c/Point72",
+    "date_posted": 1769209922,
+    "date_updated": 1769209922,
+    "degrees": [
+      "Bachelor's",
+      "Master's",
+      "PhD"
+    ],
+    "id": "2feb0baf-d212-4827-9c88-22d0b99dd528",
+    "is_visible": true,
+    "locations": [
+      "Stamford, CT",
+      "NYC"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "N/A"
+    ],
+    "title": "Fund Flow Quantitative Researcher",
+    "url": "https://boards.greenhouse.io/point72/jobs/8389431002"
+  },
+  {
+    "active": true,
+    "category": "Product",
+    "company_name": "TikTok",
+    "company_url": "https://simplify.jobs/c/TikTok",
+    "date_posted": 1769469477,
+    "date_updated": 1769469477,
+    "degrees": [
+      "Bachelor's",
+      "Master's"
+    ],
+    "id": "fd2aa27a-d775-4452-8bfc-318d2021b364",
+    "is_visible": true,
+    "locations": [
+      "San Jose, CA"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Spring 2026",
+      "Summer 2026"
+    ],
+    "title": "Product Manager Project Intern - Tiktok LIVE-Ecosystem Governance - 2026 Start",
+    "url": "https://lifeattiktok.com/search/7598849238706735365"
+  },
+  {
+    "active": true,
+    "category": "Hardware",
+    "company_name": "Etched.ai",
+    "company_url": "https://simplify.jobs/c/Etched-AI",
+    "date_posted": 1770430143,
+    "date_updated": 1770430143,
+    "degrees": [
+      "Bachelor's",
+      "Master's",
+      "PhD"
+    ],
+    "id": "b6a3ef51-360d-4fca-b9ce-d3956052fbb0",
+    "is_visible": true,
+    "locations": [
+      "San Jose, CA"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Firmware Intern - Firmware",
+    "url": "https://jobs.ashbyhq.com/Etched/699f3ab2-07e4-466c-9d76-3d4a3abb4ebc/application"
+  },
+  {
+    "active": true,
+    "category": "Software Engineering",
+    "company_name": "Multiply Labs",
+    "company_url": "",
+    "date_posted": 1771948191,
+    "date_updated": 1771948191,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "id": "97e90df1-ce3c-402c-b01a-191b722209e1",
+    "is_visible": true,
+    "locations": [
+      "San Francisco, CA"
+    ],
+    "source": "natalieh235",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Robotics Software Intern",
+    "url": "https://jobs.lever.co/multiplylabs/acca98ab-c206-4f71-b7a5-6977e4828586"
+  },
+  {
+    "active": true,
+    "category": "Hardware Engineering",
+    "company_name": "Hermeus",
+    "company_url": "",
+    "date_posted": 1772815328,
+    "date_updated": 1772815328,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "id": "44bbff4b-6183-44c5-93b8-e082f78ee431",
+    "is_visible": true,
+    "locations": [
+      "Atlanta, GA"
+    ],
+    "source": "AlmondCroffle",
+    "sponsorship": "U.S. Citizenship is Required",
+    "terms": [
+      "Summer 2026",
+      "Fall 2026"
+    ],
+    "title": "Flight Software Engineering Intern",
+    "url": "https://jobs.lever.co/hermeus/51378fa0-0327-45fd-9420-b6e7d8b56440"
+  },
+  {
+    "active": true,
+    "category": "Data Science, AI & Machine Learning",
+    "company_name": "Internship",
+    "company_url": "",
+    "date_posted": 1773236130,
+    "date_updated": 1773236130,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "id": "d3558132-2367-473c-930c-63416534e389",
+    "is_visible": true,
+    "locations": [
+      "New York, NY"
+    ],
+    "source": "AlmondCroffle",
+    "sponsorship": "Offers Sponsorship",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "AI Deployment Engineering Internship",
+    "url": "https://jobs.ashbyhq.com/interplay/da19ed8a-f03c-49d8-a2fd-d2988b8c3369"
+  },
+  {
+    "active": true,
+    "category": "Data Science, AI & Machine Learning",
+    "company_name": "K1",
+    "company_url": "",
+    "date_posted": 1773747174,
+    "date_updated": 1773747174,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "id": "bead841e-a62e-4398-b92e-600ec3c544c4",
+    "is_visible": true,
+    "locations": [
+      "Manhattan Beach, CA"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Does Not Offer Sponsorship",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "AI Automation Intern",
+    "url": "https://k1im.applytojob.com/apply/ISSTIdON0L/AI-Automation-Intern"
+  },
+  {
+    "active": true,
+    "category": "Product Management",
+    "company_name": "Niural",
+    "company_url": "",
+    "date_posted": 1782221787,
+    "date_updated": 1782221787,
+    "degrees": [
+      "Bachelor's"
+    ],
+    "id": "3d10c362-0c0a-4092-936e-46903e7fea25",
+    "is_visible": true,
+    "locations": [
+      "New York City, NY"
+    ],
+    "source": "DereC4",
+    "sponsorship": "Does Not Offer Sponsorship",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Product Design Intern",
+    "url": "https://jobs.ashbyhq.com/niural/d20af572-03b9-4f2a-8476-53c34203b2bc"
+  },
+  {
+    "active": true,
+    "category": "AI/ML/Data",
+    "company_name": "Cresta",
+    "company_url": "https://simplify.jobs/c/Cresta",
+    "date_posted": 1770103151,
+    "date_updated": 1770103151,
+    "degrees": [
+      "Bachelor's",
+      "Master's"
+    ],
+    "id": "7ba71986-7f36-4096-9d70-31f988a5cd08",
+    "is_visible": true,
+    "locations": [
+      "Remote in Canada"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Forward Deployed Engineering Intern - AI Agent",
+    "url": "https://job-boards.greenhouse.io/cresta/jobs/5106468008"
+  },
+  {
+    "active": true,
+    "category": "AI/ML/Data",
+    "company_name": "Prior Labs",
+    "company_url": "https://simplify.jobs/c/Prior-Labs",
+    "date_posted": 1770304906,
+    "date_updated": 1770304906,
+    "degrees": [
+      "PhD"
+    ],
+    "id": "a39a86bb-991c-4915-982e-8a1388db3fd9",
+    "is_visible": true,
+    "locations": [
+      "Freiburg im Breisgau, Germany",
+      "NYC",
+      "Berlin, Germany"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Research Scientist Intern - PhD",
+    "url": "https://jobs.ashbyhq.com/prior-labs/09410424-8e94-4747-8155-bbcd0b1d4f6e/application"
+  },
+  {
+    "active": false,
+    "category": "Product",
+    "company_name": "Sigma Computing",
+    "company_url": "https://simplify.jobs/c/Sigma-Computing",
+    "date_posted": 1768300942,
+    "date_updated": 1768300942,
+    "degrees": [
+      "Bachelor's",
+      "Master's",
+      "MBA"
+    ],
+    "id": "4bafe0b5-f17f-45e2-9cb3-51c529b8c67d",
+    "is_visible": true,
+    "locations": [
+      "SF"
+    ],
+    "source": "Simplify",
+    "sponsorship": "Other",
+    "terms": [
+      "Summer 2026"
+    ],
+    "title": "Product Management Intern",
+    "url": "https://job-boards.greenhouse.io/sigmacomputing/jobs/7588129003"
+  }
+]

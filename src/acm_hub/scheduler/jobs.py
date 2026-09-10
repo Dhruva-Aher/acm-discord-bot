@@ -24,6 +24,9 @@ logger = get_logger(__name__)
 
 INTERNSHIP_JOB_ID = "collect_internships"
 
+#: Event-loop iterations to wait for APScheduler's deferred shutdown callback.
+_SHUTDOWN_YIELD_LIMIT = 100
+
 
 class CollectionScheduler:
     """Runs collectors on a cadence and queues what they find for review."""
@@ -106,8 +109,23 @@ class CollectionScheduler:
         except ChannelUnavailableError as exc:
             logger.error("scheduler.review_channel_unavailable", error=str(exc))
 
-    def shutdown(self) -> None:
-        """Stop the scheduler without waiting for a running job to finish."""
-        if self._scheduler.running:
-            self._scheduler.shutdown(wait=False)
-            logger.info("scheduler.stopped")
+    async def shutdown(self) -> None:
+        """Stop the scheduler and wait until it has actually stopped.
+
+        ``AsyncIOScheduler.shutdown`` does not take effect synchronously - it
+        schedules the real teardown as an event-loop callback. Returning before
+        that callback runs would let a job start *after* the caller has disposed
+        the database engine and HTTP clients the job depends on, so this yields
+        until the scheduler reports itself stopped.
+        """
+        if not self._scheduler.running:
+            return
+
+        self._scheduler.shutdown(wait=False)
+        for _ in range(_SHUTDOWN_YIELD_LIMIT):
+            if not self._scheduler.running:
+                logger.info("scheduler.stopped")
+                return
+            await asyncio.sleep(0)
+
+        logger.warning("scheduler.shutdown_timed_out")
