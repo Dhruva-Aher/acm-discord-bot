@@ -66,7 +66,11 @@ def command_names(cog: AcmCommands | AdminCommands) -> set[str]:
 
 class TestCommandRegistration:
     def test_member_commands(self, bot: MagicMock) -> None:
-        assert command_names(AcmCommands(bot)) == {"acm status"}
+        assert command_names(AcmCommands(bot)) == {
+            "acm status",
+            "acm opportunities",
+            "acm subscribe",
+        }
 
     def test_officer_commands(self, bot: MagicMock) -> None:
         assert command_names(AdminCommands(bot)) == {
@@ -125,7 +129,7 @@ class TestStatusCommand:
         awaiting = next(f.value for f in embed.fields if f.name == "Awaiting officer review")
         sources = next(f.value for f in embed.fields if f.name == "Sources")
         assert awaiting == "1"
-        assert "stub" in sources
+        assert "Stub Source" in sources
 
 
 class TestAdminGuard:
