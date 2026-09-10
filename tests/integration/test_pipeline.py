@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
+import pytest
 import respx
 
 from acm_hub.collectors.base import Collector, CollectorError
@@ -15,7 +17,28 @@ from acm_hub.db.session import Database
 from acm_hub.domain.enums import CollectorRunStatus, OpportunityStatus
 from acm_hub.domain.source import RawOpportunity
 from acm_hub.pipeline.process import OpportunityPipeline
-from tests.conftest import make_raw
+from tests.conftest import initialize_source, make_raw
+
+
+@pytest.fixture(autouse=True)
+def _mock_http() -> Iterator[None]:
+    """Intercept HTTP for the whole module.
+
+    ``@respx.mock`` cannot be applied to a test class: it returns a function,
+    so pytest stops collecting the class and its tests silently never run.
+    """
+    with respx.mock:
+        yield
+
+
+@pytest.fixture
+async def initialized_stub(database: Database) -> None:
+    """Put the ``stub`` source past its initial import.
+
+    Request this in tests that are about ordinary collection, so what they
+    collect counts as news rather than baseline backlog.
+    """
+    await initialize_source(database, "stub", display_name="Stub Source")
 
 
 class StubCollector(Collector):
@@ -25,10 +48,17 @@ class StubCollector(Collector):
     display_name = "Stub Source"
     source_url = "https://example.test/source"
 
-    def __init__(self, records: list[RawOpportunity] | None = None, error: str | None = None):
+    def __init__(
+        self,
+        records: list[RawOpportunity] | None = None,
+        error: str | None = None,
+        *,
+        snapshot: bool = False,
+    ):
         self._records = records or []
         self._error = error
         self.call_count = 0
+        self.produces_complete_snapshot = snapshot
 
     async def collect(self) -> list[RawOpportunity]:
         self.call_count += 1
@@ -71,7 +101,9 @@ class TestPipelinePersistence:
             counts = await OpportunityRepository(session).count_by_status()
         assert sum(counts.values()) == 1
 
-    async def test_a_changed_posting_is_detected_and_updated(self, database: Database) -> None:
+    async def test_a_changed_posting_is_detected_and_updated(
+        self, database: Database, initialized_stub: None
+    ) -> None:
         pipeline = OpportunityPipeline(database)
         await pipeline.run(StubCollector([make_raw(application_url="https://example.com/a")]))
 
@@ -96,7 +128,9 @@ class TestPipelinePersistence:
         assert row is not None
         assert row.title == "Senior Software Engineering Intern"
 
-    async def test_duplicates_within_one_batch_are_collapsed(self, database: Database) -> None:
+    async def test_duplicates_within_one_batch_are_collapsed(
+        self, database: Database, initialized_stub: None
+    ) -> None:
         collector = StubCollector(
             [
                 make_raw(application_url="https://example.com/a", locations=("Austin, TX",)),
@@ -124,7 +158,9 @@ class TestPipelinePersistence:
         assert stats.rejected == 1
         assert stats.new == 1
 
-    async def test_sig_classification_is_persisted(self, database: Database) -> None:
+    async def test_sig_classification_is_persisted(
+        self, database: Database, initialized_stub: None
+    ) -> None:
         collector = StubCollector([make_raw(title="Machine Learning Engineer Intern")])
         await OpportunityPipeline(database).run(collector)
 
@@ -133,7 +169,7 @@ class TestPipelinePersistence:
         assert [entry["sig"] for entry in rows[0].sig_matches] == ["SIGAI"]
 
     async def test_eligibility_stays_unknown_when_the_source_is_silent(
-        self, database: Database
+        self, database: Database, initialized_stub: None
     ) -> None:
         await OpportunityPipeline(database).run(StubCollector([make_raw()]))
         async with database.session() as session:
@@ -186,12 +222,12 @@ class TestPipelineRunRecords:
         assert source.last_success_at is None
 
 
-@respx.mock
 class TestPipelineWithTheRealCollector:
     async def test_the_upstream_fixture_flows_through_every_stage(
         self, database: Database, simplify_listings: list[dict[str, Any]]
     ) -> None:
         """Real upstream records, mocked transport, full pipeline."""
+        await initialize_source(database, "simplify_internships")
         respx.get(DEFAULT_LISTINGS_URL).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )

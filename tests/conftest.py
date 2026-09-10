@@ -12,12 +12,14 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import pytest
 
 from acm_hub.db.models import Base
+from acm_hub.db.repositories.sources import SourceRepository
 from acm_hub.db.session import Database
-from acm_hub.domain.enums import OpportunityType, VerificationStatus
+from acm_hub.domain.enums import OpportunityType, PublicationPolicy, VerificationStatus
 from acm_hub.domain.source import RawOpportunity
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
@@ -58,6 +60,28 @@ async def database(tmp_path: Path) -> AsyncIterator[Database]:
 
     yield db
     await db.dispose()
+
+
+async def initialize_source(
+    database: Database,
+    name: str,
+    *,
+    display_name: str = "Test Source",
+    source_url: str = "https://example.test/source",
+    policy: PublicationPolicy = PublicationPolicy.MANUAL_REVIEW,
+) -> None:
+    """Register ``name`` as a source that has already completed a first run.
+
+    Most tests are about what happens to *news*, so they need the source past
+    its initial import - otherwise everything they collect is stored as
+    baseline and held back from the review queue. Tests that are specifically
+    about the initial import simply do not call this.
+    """
+    async with database.session() as session:
+        sources = SourceRepository(session)
+        await sources.register(name, display_name, source_url)
+        await sources.set_policy(name, policy)
+        await sources.mark_initialized(name, run_id=uuid4())
 
 
 def make_raw(

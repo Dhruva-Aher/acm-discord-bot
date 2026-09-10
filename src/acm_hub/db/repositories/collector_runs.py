@@ -39,6 +39,8 @@ class CollectorRunRepository:
         records_updated: int = 0,
         records_duplicate: int = 0,
         records_rejected: int = 0,
+        records_closed: int = 0,
+        snapshot_complete: bool = False,
         error: str | None = None,
     ) -> None:
         await self._session.execute(
@@ -53,6 +55,8 @@ class CollectorRunRepository:
                 records_updated=records_updated,
                 records_duplicate=records_duplicate,
                 records_rejected=records_rejected,
+                records_closed=records_closed,
+                snapshot_complete=snapshot_complete,
                 error=error,
             )
         )
@@ -87,21 +91,20 @@ class CollectorRunRepository:
         )
         return list(result.scalars().all())
 
-    async def upsert_source(self, name: str, display_name: str, source_url: str) -> None:
-        """Ensure the collector is registered in ``sources``."""
-        existing = await self._session.get(models.Source, name)
-        if existing is None:
-            self._session.add(
-                models.Source(name=name, display_name=display_name, source_url=source_url)
-            )
-            await self._session.flush()
-            return
-        existing.display_name = display_name
-        existing.source_url = source_url
+    async def last_successful(self, collector: str) -> models.CollectorRun | None:
+        """The most recent run that completed successfully.
 
-    async def mark_source_success(self, name: str) -> None:
-        await self._session.execute(
-            sa.update(models.Source)
-            .where(models.Source.name == name)
-            .values(last_success_at=datetime.now(tz=UTC))
+        The closure sweep compares against this to decide whether the current
+        run's volume is plausible, so a truncated feed cannot be mistaken for
+        thousands of postings closing at once.
+        """
+        result = await self._session.execute(
+            sa.select(models.CollectorRun)
+            .where(
+                models.CollectorRun.collector == collector,
+                models.CollectorRun.status == CollectorRunStatus.SUCCESS,
+            )
+            .order_by(models.CollectorRun.started_at.desc())
+            .limit(1)
         )
+        return result.scalar_one_or_none()

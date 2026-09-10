@@ -26,7 +26,7 @@ from acm_hub.pipeline.classify import classify_opportunity
 from acm_hub.pipeline.normalize import normalize_opportunity
 from acm_hub.pipeline.process import OpportunityPipeline
 from acm_hub.publishing.discord import ChannelUnavailableError, OpportunityPublisher
-from tests.conftest import FROZEN_NOW, make_raw
+from tests.conftest import FROZEN_NOW, initialize_source, make_raw
 from tests.integration.test_pipeline import StubCollector
 
 OPPORTUNITIES_CHANNEL_ID = 111111111111111111
@@ -228,6 +228,7 @@ class TestRejectedOpportunitiesStayRejected:
         self, database: Database, publisher: OpportunityPublisher, channels: dict[int, MagicMock]
     ) -> None:
         """The behaviour officers actually notice: rejects do not come back."""
+        await initialize_source(database, "stub")
         records = [make_raw(application_url="https://example.com/a")]
         pipeline = OpportunityPipeline(database)
         await pipeline.run(StubCollector(records))
@@ -248,6 +249,7 @@ class TestRejectedOpportunitiesStayRejected:
     async def test_a_rejected_opportunity_that_changes_upstream_stays_rejected(
         self, database: Database
     ) -> None:
+        await initialize_source(database, "stub")
         pipeline = OpportunityPipeline(database)
         await pipeline.run(StubCollector([make_raw(application_url="https://example.com/a")]))
 

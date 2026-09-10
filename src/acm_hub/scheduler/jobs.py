@@ -38,12 +38,14 @@ class CollectionScheduler:
         publisher: OpportunityPublisher,
         collectors: list[Collector],
         review_batch_limit: int = 10,
+        publish_batch_limit: int = 10,
         scheduler: AsyncIOScheduler | None = None,
     ) -> None:
         self._pipeline = pipeline
         self._publisher = publisher
         self._collectors = collectors
         self._review_batch_limit = review_batch_limit
+        self._publish_batch_limit = publish_batch_limit
         self._scheduler = scheduler or AsyncIOScheduler(timezone="UTC")
         self._manual_lock = asyncio.Lock()
 
@@ -99,7 +101,9 @@ class CollectionScheduler:
                     continue
                 results.append(stats)
 
+            await self._apply_closures(results)
             await self._queue_reviews()
+            await self._publish_approved()
             return results
 
     async def _queue_reviews(self) -> None:
@@ -108,6 +112,27 @@ class CollectionScheduler:
             await self._publisher.queue_pending_reviews(self._review_batch_limit)
         except ChannelUnavailableError as exc:
             logger.error("scheduler.review_channel_unavailable", error=str(exc))
+
+    async def _publish_approved(self) -> None:
+        """Post anything already approved: auto-published rows and publish retries."""
+        try:
+            await self._publisher.publish_pending_approved(self._publish_batch_limit)
+        except ChannelUnavailableError as exc:
+            logger.error("scheduler.opportunities_channel_unavailable", error=str(exc))
+
+    async def _apply_closures(self, results: list[PipelineStats]) -> None:
+        """Reflect closures decided by the pipeline in the members' channel.
+
+        Editing existing messages only. A closure sweep never posts anything,
+        so a cycle that closes many opportunities is silent in the channel.
+        """
+        closed_ids = [opportunity_id for stats in results for opportunity_id in stats.closed_ids]
+        if not closed_ids:
+            return
+        try:
+            await self._publisher.mark_published_messages_closed(closed_ids)
+        except ChannelUnavailableError as exc:
+            logger.error("scheduler.closure_channel_unavailable", error=str(exc))
 
     async def shutdown(self) -> None:
         """Stop the scheduler and wait until it has actually stopped.

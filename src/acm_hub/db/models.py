@@ -26,6 +26,7 @@ from acm_hub.domain.enums import (
     CollectorRunStatus,
     OpportunityStatus,
     OpportunityType,
+    PublicationPolicy,
     RemoteStatus,
     ReviewDecision,
     SponsorshipStatus,
@@ -54,20 +55,45 @@ class Base(DeclarativeBase):
 
 
 class Source(Base):
-    """One registered collector, and when it last ran successfully."""
+    """One registered collector: its trust policy and its import state.
+
+    Two pieces of state live here rather than in configuration, because both
+    must survive a restart and both are edited by officers at runtime:
+
+    ``publication_policy``
+        Whether this source's findings go to review, publish straight through,
+        or are not collected at all. Keeping it in a column is what makes the
+        trust decision data-driven instead of a branch on ``name``.
+
+    ``initialized_at`` / ``baseline_run_id``
+        When the source first completed a successful run, and which run that
+        was. Everything that first run discovered is pre-existing backlog, not
+        news, so it is imported as baseline instead of being pushed at the
+        officers. A ``NULL`` here is the only thing that marks a source as
+        never-initialized - there is no hardcoded cutover date anywhere.
+    """
 
     __tablename__ = "sources"
 
     name: Mapped[str] = mapped_column(sa.String(64), primary_key=True)
     display_name: Mapped[str] = mapped_column(sa.String(128), nullable=False)
     source_url: Mapped[str] = mapped_column(sa.Text, nullable=False)
-    enabled: Mapped[bool] = mapped_column(sa.Boolean, nullable=False, default=True)
+    publication_policy: Mapped[PublicationPolicy] = mapped_column(
+        _enum(PublicationPolicy, "publication_policy"),
+        nullable=False,
+        default=PublicationPolicy.MANUAL_REVIEW,
+        server_default=PublicationPolicy.MANUAL_REVIEW.value,
+    )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
     last_success_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    initialized_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    baseline_run_id: Mapped[UUID | None] = mapped_column(sa.Uuid, nullable=True)
 
 
 class Opportunity(Base):
@@ -77,6 +103,16 @@ class Opportunity(Base):
     __table_args__ = (
         sa.Index("ix_opportunities_status_discovered", "status", "discovered_at"),
         sa.Index("ix_opportunities_source_external", "source_name", "source_external_id"),
+        # Serves the members' browse query, which is always filtered to
+        # published rows and always ordered newest first.
+        sa.Index(
+            "ix_opportunities_status_type_discovered",
+            "status",
+            "opportunity_type",
+            "discovered_at",
+        ),
+        # Serves the closure sweep, which scans one source's still-open rows.
+        sa.Index("ix_opportunities_source_status", "source_name", "status"),
     )
 
     id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid4)
@@ -132,6 +168,16 @@ class Opportunity(Base):
         default=OpportunityStatus.DISCOVERED,
         index=True,
     )
+    #: Imported by a source's very first successful run, i.e. backlog that
+    #: existed before ACM Hub started watching. Baseline rows are real and
+    #: searchable, they are simply held back from the review queue so turning a
+    #: source on does not dump thousands of cards on the officers. An officer
+    #: can release them deliberately.
+    is_baseline: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
+    #: When a closure sweep observed that the source no longer lists this.
+    closed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     verification_status: Mapped[VerificationStatus] = mapped_column(
         _enum(VerificationStatus, "verification_status"),
         nullable=False,
@@ -156,6 +202,35 @@ class Opportunity(Base):
     reviews: Mapped[list[ReviewAction]] = relationship(
         back_populates="opportunity", cascade="all, delete-orphan", lazy="selectin"
     )
+    sigs: Mapped[list[OpportunitySig]] = relationship(
+        back_populates="opportunity", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class OpportunitySig(Base):
+    """One classifier SIG match, projected out of ``sig_matches`` for querying.
+
+    ``opportunities.sig_matches`` stays the display source of truth - it holds
+    the matched terms an officer needs to judge a classification. This table is
+    a queryable projection of the same data, written by the same upsert, so
+    ``/acm opportunities sig:SIGAI`` is an indexed join instead of a JSON scan
+    over every row. A test asserts the two never diverge.
+    """
+
+    __tablename__ = "opportunity_sigs"
+    __table_args__ = (
+        sa.UniqueConstraint("opportunity_id", "sig", name="uq_opportunity_sig"),
+        sa.Index("ix_opportunity_sigs_sig", "sig"),
+    )
+
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid4)
+    opportunity_id: Mapped[UUID] = mapped_column(
+        sa.ForeignKey("opportunities.id", ondelete="CASCADE"), nullable=False
+    )
+    sig: Mapped[str] = mapped_column(sa.String(32), nullable=False)
+    score: Mapped[float] = mapped_column(sa.Float, nullable=False)
+
+    opportunity: Mapped[Opportunity] = relationship(back_populates="sigs")
 
 
 class PublicationRecord(Base):
@@ -251,5 +326,16 @@ class CollectorRun(Base):
     records_updated: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     records_duplicate: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
     records_rejected: Mapped[int] = mapped_column(sa.Integer, nullable=False, default=0)
+    records_closed: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, default=0, server_default="0"
+    )
+
+    #: Whether this run observed the source's complete set of open listings.
+    #: Only a complete snapshot may be used to infer that anything it omits has
+    #: closed; a failed, partial or incremental run leaves this ``False`` and
+    #: the closure sweep is skipped entirely.
+    snapshot_complete: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, default=False, server_default=sa.false()
+    )
 
     error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

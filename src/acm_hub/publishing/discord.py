@@ -14,11 +14,16 @@ is released so a later retry can try again.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 import discord
 
-from acm_hub.bot.embeds.opportunity import build_opportunity_embed, build_review_embed
+from acm_hub.bot.embeds.opportunity import (
+    build_opportunity_embed,
+    build_review_embed,
+    mark_embed_closed,
+)
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
@@ -185,6 +190,101 @@ class OpportunityPublisher:
             message_id=message.id,
         )
         return row
+
+    async def publish_pending_approved(self, limit: int) -> int:
+        """Publish opportunities already approved but not yet posted.
+
+        Serves auto-published sources and retries publishes that previously
+        failed. A send failure stops the pass rather than hammering a channel
+        that is rate-limited or gone; the rows stay ``APPROVED`` and the next
+        cycle picks them up.
+
+        Returns:
+            How many opportunities were posted.
+        """
+        async with self._database.session() as session:
+            pending = await OpportunityRepository(session).list_awaiting_publication(limit)
+
+        published = 0
+        for row in pending:
+            try:
+                if await self.publish_approved(row.id) is not None:
+                    published += 1
+            except (discord.HTTPException, ChannelUnavailableError) as exc:
+                logger.error(
+                    "publish.batch_stopped",
+                    opportunity_id=str(row.id),
+                    error=f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+                break
+
+        if published:
+            logger.info("publish.batch_finished", published=published, candidates=len(pending))
+        return published
+
+    async def mark_published_messages_closed(self, opportunity_ids: Sequence[UUID]) -> int:
+        """Edit the members' posts for opportunities that have closed.
+
+        Editing in place is the least noisy option available and needs nothing
+        fragile: the message ID was persisted when we published, so this is a
+        lookup rather than a channel scan. Nothing new is posted, so a sweep
+        that closes fifty postings produces zero new Discord messages.
+
+        A message an officer already deleted is treated as done rather than as
+        an error - the point was that members stop seeing an open posting.
+
+        Returns:
+            How many messages were successfully edited.
+        """
+        edited = 0
+        for opportunity_id in opportunity_ids:
+            async with self._database.session() as session:
+                repository = OpportunityRepository(session)
+                row = await repository.get(opportunity_id)
+                targets = await repository.publication_messages(opportunity_id)
+                embed = (
+                    mark_embed_closed(
+                        build_opportunity_embed(row, source_display_name=self._display_name(row))
+                    )
+                    if row is not None
+                    else None
+                )
+
+            if embed is None:
+                continue
+
+            for channel_id, message_id in targets:
+                if await self._edit_message(channel_id, message_id, embed):
+                    edited += 1
+
+        if edited:
+            logger.info("closure.messages_edited", edited=edited)
+        return edited
+
+    async def _edit_message(self, channel_id: int, message_id: int, embed: discord.Embed) -> bool:
+        """Replace one published message's embed, tolerating its absence."""
+        try:
+            channel = await self._resolve_channel(channel_id)
+        except ChannelUnavailableError as exc:
+            logger.warning("closure.channel_unavailable", channel_id=channel_id, error=str(exc))
+            return False
+
+        try:
+            message = await channel.fetch_message(message_id)
+            await message.edit(embed=embed)
+        except discord.NotFound:
+            logger.info("closure.message_gone", channel_id=channel_id, message_id=message_id)
+            return False
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            logger.warning(
+                "closure.edit_failed",
+                channel_id=channel_id,
+                message_id=message_id,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            return False
+        return True
 
     async def _release_claim(self, opportunity_id: UUID) -> None:
         """Roll the opportunity back to ``approved`` so a retry can publish it."""

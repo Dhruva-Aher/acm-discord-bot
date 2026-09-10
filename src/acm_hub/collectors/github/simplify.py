@@ -200,6 +200,13 @@ class SimplifyCollector(Collector):
     display_name = DISPLAY_NAME
     source_url = REPOSITORY_URL
 
+    #: The feed is a single JSON array containing the repository's entire
+    #: catalogue, so one successful fetch is the whole open set. When
+    #: ``include_inactive`` is on, closed postings are returned too and the
+    #: result is no longer a snapshot of what is *open*; the constructor turns
+    #: this off in that case.
+    produces_complete_snapshot = True
+
     def __init__(
         self,
         *,
@@ -226,6 +233,11 @@ class SimplifyCollector(Collector):
         self._listings_url = listings_url
         self._max_retries = max_retries
         self._include_inactive = include_inactive
+        if include_inactive:
+            # The closure sweep asks "which of our rows are missing from the
+            # open set?". Including closed postings makes them present, which
+            # would suppress every legitimate closure.
+            self.produces_complete_snapshot = False
 
     async def collect(self) -> list[RawOpportunity]:
         """Fetch the feed and parse every listing it contains."""

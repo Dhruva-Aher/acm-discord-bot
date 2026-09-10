@@ -43,6 +43,16 @@ class Collector(ABC):
     #: Where a human can go to inspect the source themselves.
     source_url: str
 
+    #: Whether a successful :meth:`collect` returns *every* currently-open
+    #: opportunity the source knows about, not a page or a recent slice.
+    #:
+    #: Only a complete snapshot licenses reasoning about absence: if a source
+    #: promises the whole list and a posting is not in it, the posting is gone.
+    #: A paginated or incremental collector must leave this ``False``, because
+    #: for it "not returned" means nothing at all. Defaulting to ``False`` means
+    #: a new collector cannot accidentally close anything.
+    produces_complete_snapshot: bool = False
+
     @abstractmethod
     async def collect(self) -> list[RawOpportunity]:
         """Fetch and parse the source.

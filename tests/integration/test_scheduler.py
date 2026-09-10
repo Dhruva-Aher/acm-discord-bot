@@ -13,7 +13,7 @@ from acm_hub.domain.source import RawOpportunity
 from acm_hub.pipeline.process import OpportunityPipeline
 from acm_hub.publishing.discord import ChannelUnavailableError, OpportunityPublisher
 from acm_hub.scheduler.jobs import CollectionScheduler
-from tests.conftest import make_raw
+from tests.conftest import initialize_source, make_raw
 from tests.integration.test_pipeline import StubCollector
 
 
@@ -52,6 +52,7 @@ def build_scheduler(
 
 class TestCollectorIsolation:
     async def test_one_failing_collector_does_not_stop_the_others(self, database: Database) -> None:
+        await initialize_source(database, "stub")
         failing = StubCollector(error="upstream is down")
         failing.name = "failing"
         failing.display_name = "Failing Source"
@@ -128,6 +129,7 @@ class TestReviewQueueing:
     async def test_an_unavailable_review_channel_does_not_fail_the_cycle(
         self, database: Database
     ) -> None:
+        await initialize_source(database, "stub")
         publisher = AsyncMock()
         publisher.queue_pending_reviews.side_effect = ChannelUnavailableError("channel 1 missing")
 

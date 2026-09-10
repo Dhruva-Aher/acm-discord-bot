@@ -8,6 +8,7 @@ collector's error handling exists for.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -23,6 +24,18 @@ from acm_hub.collectors.github.simplify import (
 )
 from acm_hub.collectors.http import fetch_with_retry
 from acm_hub.domain.enums import OpportunityType, SponsorshipStatus, VerificationStatus
+
+
+@pytest.fixture(autouse=True)
+def _mock_http() -> Iterator[None]:
+    """Intercept every HTTP call for the whole module.
+
+    Not ``@respx.mock`` on the test classes: used as a class decorator respx
+    returns a *function*, so pytest stops collecting the class entirely and the
+    tests inside it silently never run.
+    """
+    with respx.mock:
+        yield
 
 
 async def _noop_sleep(_seconds: float) -> None:
@@ -143,7 +156,6 @@ class TestParseListing:
         assert parse_listing(record).locations == ("Austin, TX", "NYC")
 
 
-@respx.mock
 class TestCollect:
     async def test_returns_only_open_listings(
         self, simplify_listings: list[dict[str, Any]]
@@ -271,7 +283,6 @@ class TestCollect:
             await collector.aclose()
 
 
-@respx.mock
 class TestSafeCollect:
     async def test_a_failing_collector_is_reported_not_raised(self) -> None:
         """The isolation boundary: one dead source must not stop the others."""
@@ -302,7 +313,6 @@ class TestSafeCollect:
         assert outcome.records
 
 
-@respx.mock
 class TestFetchWithRetry:
     async def test_retries_a_transient_failure_then_succeeds(self) -> None:
         route = respx.get("https://example.test/data").mock(

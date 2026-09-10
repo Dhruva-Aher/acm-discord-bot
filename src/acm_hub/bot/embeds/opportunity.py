@@ -53,11 +53,16 @@ SPONSORSHIP_LABELS: dict[SponsorshipStatus, str] = {
 ACM_GOLD = discord.Colour(0xFFC627)
 ACM_MAROON = discord.Colour(0x8C1D40)
 
+ACM_GREY = discord.Colour(0x6E6E6E)
+
 STATUS_COLOURS: dict[OpportunityStatus, discord.Colour] = {
     OpportunityStatus.PUBLISHED: ACM_GOLD,
     OpportunityStatus.APPROVED: ACM_GOLD,
-    OpportunityStatus.REJECTED: discord.Colour(0x6E6E6E),
+    OpportunityStatus.REJECTED: ACM_GREY,
+    OpportunityStatus.CLOSED: ACM_GREY,
 }
+
+CLOSED_PREFIX = "[CLOSED] "
 
 
 def format_locations(locations: list[str], remote_status: RemoteStatus) -> str:
@@ -140,6 +145,30 @@ def build_opportunity_embed(
     discovered = _discovered_label(row.discovered_at, now=now)
     embed.set_footer(text=f"Source: {footer} \u2022 Discovered: {discovered}")
     return embed
+
+
+def mark_embed_closed(embed: discord.Embed) -> discord.Embed:
+    """Restyle a published embed to say the posting is no longer open.
+
+    The title is prefixed rather than the post deleted, so a member who
+    remembers seeing the opportunity can still find it and see what happened
+    instead of wondering whether they imagined it. The application link is
+    removed because following it is no longer useful, and the accent colour
+    drops to grey so a closed post is distinguishable while scrolling.
+    """
+    closed = embed.copy()
+    title = closed.title or ""
+    if not title.startswith(CLOSED_PREFIX):
+        closed.title = truncate(f"{CLOSED_PREFIX}{title}", 250)
+    closed.url = None
+    closed.colour = ACM_GREY
+    closed.set_author(name="Closed")
+    closed.add_field(
+        name="Status",
+        value="This listing is no longer published by the source.",
+        inline=False,
+    )
+    return closed
 
 
 def build_review_embed(

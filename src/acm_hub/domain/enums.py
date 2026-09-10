@@ -83,11 +83,39 @@ class CollectorRunStatus(StrEnum):
     FAILED = "failed"
 
 
+class PublicationPolicy(StrEnum):
+    """What ACM Hub is allowed to do with what a source produces.
+
+    Stored per source in the ``sources`` table so the decision is data, not a
+    branch on the source's name. New sources default to
+    :attr:`MANUAL_REVIEW`; nothing promotes a source automatically.
+    """
+
+    #: Everything goes to the officer review queue first. The safe default.
+    MANUAL_REVIEW = "manual_review"
+    #: Newly discovered opportunities are published without officer review.
+    #: Only an officer can turn this on, per source, at runtime.
+    AUTO_PUBLISH = "auto_publish"
+    #: The source is not collected at all.
+    DISABLED = "disabled"
+
+
 #: Statuses that mean "an officer already decided about this".
 TERMINAL_REVIEW_STATUSES: frozenset[OpportunityStatus] = frozenset(
     {
         OpportunityStatus.APPROVED,
         OpportunityStatus.PUBLISHED,
         OpportunityStatus.REJECTED,
+    }
+)
+
+#: Statuses a closure sweep may move an opportunity out of. A rejected
+#: opportunity stays rejected: an officer's decision outranks upstream churn.
+CLOSEABLE_STATUSES: frozenset[OpportunityStatus] = frozenset(
+    {
+        OpportunityStatus.DISCOVERED,
+        OpportunityStatus.PENDING_REVIEW,
+        OpportunityStatus.APPROVED,
+        OpportunityStatus.PUBLISHED,
     }
 )
