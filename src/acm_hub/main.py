@@ -90,6 +90,8 @@ async def run_bot(settings: Settings) -> None:
 
 def run() -> None:
     """Console-script entrypoint."""
+    import discord
+
     settings = load_settings()
     configure_logging(level=settings.log_level, log_format=settings.log_format)
     logger.info(
@@ -101,6 +103,26 @@ def run() -> None:
         asyncio.run(run_bot(settings))
     except KeyboardInterrupt:  # pragma: no cover - interactive only
         logger.info("shutdown.keyboard_interrupt")
+    except discord.LoginFailure:
+        # Common enough during setup to deserve an actionable message rather
+        # than a traceback pointing into discord.py's internals.
+        logger.error(
+            "bot.login_failed",
+            hint=(
+                "Discord rejected DISCORD_TOKEN. Reset it under Bot -> Reset Token "
+                "in the Discord Developer Portal and update your environment."
+            ),
+        )
+        raise SystemExit(1) from None
+    except discord.PrivilegedIntentsRequired:
+        logger.error(
+            "bot.intents_rejected",
+            hint=(
+                "Discord rejected the requested gateway intents. ACM Hub asks only "
+                "for `guilds`, so this usually means a modified build."
+            ),
+        )
+        raise SystemExit(1) from None
 
 
 if __name__ == "__main__":
