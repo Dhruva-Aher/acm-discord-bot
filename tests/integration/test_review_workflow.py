@@ -40,13 +40,23 @@ def fake_channel(channel_id: int, *, message_id_start: int = 900000000000000000)
     channel = MagicMock(spec=discord.TextChannel)
     channel.id = channel_id
     counter = iter(range(message_id_start, message_id_start + 1000))
+    posted: dict[int, MagicMock] = {}
 
     async def send(*_args: object, **_kwargs: object) -> MagicMock:
         message = MagicMock(spec=discord.Message)
         message.id = next(counter)
+        message.edit = AsyncMock()
+        posted[message.id] = message
         return message
 
+    async def fetch_message(message_id: int) -> MagicMock:
+        if message_id in posted:
+            return posted[message_id]
+        raise discord.NotFound(MagicMock(), "unknown message")
+
     channel.send = AsyncMock(side_effect=send)
+    channel.fetch_message = AsyncMock(side_effect=fetch_message)
+    channel._posted = posted  # noqa: SLF001 - test helper, not production access
     return channel
 
 
@@ -388,3 +398,57 @@ class TestPublicationIdempotency:
                 row.id, channel_id=OPPORTUNITIES_CHANNEL_ID, message_id=1
             )
             assert await repository.record_publication(row.id, channel_id=333, message_id=2)
+
+
+class TestClosedMessageEditing:
+    async def test_a_published_message_is_edited_in_place_and_nothing_new_is_posted(
+        self, database: Database, publisher: OpportunityPublisher, channels: dict[int, MagicMock]
+    ) -> None:
+        row = await seed(database)
+        async with database.session() as session:
+            await OpportunityRepository(session).record_decision(
+                row.id, decision=ReviewDecision.APPROVED, reviewer_discord_id=OFFICER_ONE
+            )
+        await publisher.publish_approved(row.id)
+        sends_before = channels[OPPORTUNITIES_CHANNEL_ID].send.await_count
+
+        async with database.session() as session:
+            closed = await OpportunityRepository(session).mark_closed([row.id])
+        assert closed
+
+        edited = await publisher.mark_published_messages_closed([row.id])
+
+        assert edited == 1
+        assert channels[OPPORTUNITIES_CHANNEL_ID].send.await_count == sends_before
+        message = next(iter(channels[OPPORTUNITIES_CHANNEL_ID]._posted.values()))  # noqa: SLF001
+        message.edit.assert_awaited_once()
+        embed = message.edit.await_args.kwargs["embed"]
+        assert embed.title is not None and embed.title.startswith("[CLOSED]")
+
+    async def test_a_deleted_message_is_treated_as_done_not_as_a_reason_to_repost(
+        self, database: Database, publisher: OpportunityPublisher, channels: dict[int, MagicMock]
+    ) -> None:
+        row = await seed(database)
+        async with database.session() as session:
+            await OpportunityRepository(session).record_decision(
+                row.id, decision=ReviewDecision.APPROVED, reviewer_discord_id=OFFICER_ONE
+            )
+        await publisher.publish_approved(row.id)
+        channels[OPPORTUNITIES_CHANNEL_ID]._posted.clear()  # noqa: SLF001
+        sends_before = channels[OPPORTUNITIES_CHANNEL_ID].send.await_count
+
+        edited = await publisher.mark_published_messages_closed([row.id])
+
+        assert edited == 0
+        assert channels[OPPORTUNITIES_CHANNEL_ID].send.await_count == sends_before
+
+    async def test_an_unsent_claim_is_skipped_rather_than_guessed_at(
+        self, database: Database, publisher: OpportunityPublisher
+    ) -> None:
+        row = await seed(database)
+        async with database.session() as session:
+            await OpportunityRepository(session).record_publication(
+                row.id, channel_id=OPPORTUNITIES_CHANNEL_ID, message_id=None
+            )
+
+        assert await publisher.mark_published_messages_closed([row.id]) == 0

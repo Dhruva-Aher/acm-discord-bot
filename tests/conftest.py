@@ -8,6 +8,7 @@ models avoid PostgreSQL-only column types.
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,20 @@ from acm_hub.domain.enums import OpportunityType, PublicationPolicy, Verificatio
 from acm_hub.domain.source import RawOpportunity
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+
+def pytest_ignore_collect(collection_path: Path, config: pytest.Config) -> bool:
+    """Keep PostgreSQL tests out of the default SQLite run.
+
+    They live under ``tests/postgres/`` and need a live instance. Collecting
+    them only when ``ACMHUB_POSTGRES_URL`` is set is what lets ``pytest`` stay
+    secret-free and network-free in ordinary development and in the lint job.
+    """
+    del config
+    if collection_path.is_dir() and collection_path.name == "postgres":
+        return not os.environ.get("ACMHUB_POSTGRES_URL")
+    return False
+
 
 #: Fixed clock so canonical keys and hashes are reproducible across runs.
 FROZEN_NOW = datetime(2026, 9, 10, 12, 0, tzinfo=UTC)

@@ -152,9 +152,7 @@ class AcmCommands(commands.Cog):
         # raising: an enum rename must degrade someone's saved filter, not
         # break their command.
         known = {member.value for member in OpportunityType}
-        types = tuple(
-            OpportunityType(value) for value in saved.opportunity_types if value in known
-        )
+        types = tuple(OpportunityType(value) for value in saved.opportunity_types if value in known)
         return (
             OpportunityFilters(opportunity_types=types, sigs=tuple(saved.sigs)),
             describe_interests(list(saved.opportunity_types), list(saved.sigs)),

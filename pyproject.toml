@@ -90,3 +90,6 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 addopts = "-ra --strict-markers"
 filterwarnings = ["error::DeprecationWarning:acm_hub.*"]
+markers = [
+    "postgres: requires a live PostgreSQL instance; skipped unless ACMHUB_POSTGRES_URL is set",
+]

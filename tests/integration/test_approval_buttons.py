@@ -55,6 +55,8 @@ def fake_interaction(
     interaction.response.defer = AsyncMock()
     interaction.response.send_message = AsyncMock()
     interaction.response.send_modal = AsyncMock()
+    interaction.response.edit_message = AsyncMock()
+    interaction.edit_original_response = AsyncMock()
     interaction.followup = MagicMock()
     interaction.followup.send = AsyncMock()
 

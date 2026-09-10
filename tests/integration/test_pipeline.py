@@ -64,7 +64,10 @@ class StubCollector(Collector):
         self.call_count += 1
         if self._error:
             raise CollectorError(self.name, self._error)
-        return self._records
+        # A real collector hardcodes its own name onto every record it builds.
+        # Stamping here keeps the double faithful, so tests exercise the same
+        # source attribution that closure detection and baseline counts use.
+        return [record.model_copy(update={"source_name": self.name}) for record in self._records]
 
 
 class TestPipelinePersistence:

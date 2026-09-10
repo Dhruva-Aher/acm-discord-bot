@@ -42,14 +42,14 @@ def bot(database: Database) -> MagicMock:
     return fake
 
 
-async def invoke(cog: commands.Cog, command: Any, *args: Any) -> None:
+async def invoke(cog: commands.Cog, command: Any, *args: Any, **kwargs: Any) -> None:
     """Call a slash command's body directly, bypassing Discord's dispatcher.
 
     ``Command.callback`` is typed as an unbound function, so the cog instance is
     passed explicitly here.
     """
     callback = cast("Callable[..., Awaitable[None]]", command.callback)
-    await callback(cog, *args)
+    await callback(cog, *args, **kwargs)
 
 
 def command_names(cog: AcmCommands | AdminCommands) -> set[str]:

@@ -109,6 +109,20 @@ def test_the_canonical_key_is_unique(migrated_engine: Engine) -> None:
     assert ("canonical_key",) in unique_columns
 
 
+def test_the_sig_projection_is_unique_per_opportunity(migrated_engine: Engine) -> None:
+    constraints = inspect(migrated_engine).get_unique_constraints("opportunity_sigs")
+    assert any(
+        set(constraint["column_names"]) == {"opportunity_id", "sig"} for constraint in constraints
+    )
+
+
+def test_sources_carry_a_publication_policy_column(migrated_engine: Engine) -> None:
+    columns = {column["name"] for column in inspect(migrated_engine).get_columns("sources")}
+    assert "publication_policy" in columns
+    assert "initialized_at" in columns
+    assert "enabled" not in columns
+
+
 def test_downgrade_removes_everything(tmp_path: Path) -> None:
     """A migration that cannot be rolled back is a migration you cannot deploy."""
     path = tmp_path / "roundtrip.db"

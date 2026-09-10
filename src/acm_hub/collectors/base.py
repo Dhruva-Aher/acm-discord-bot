@@ -81,6 +81,24 @@ class CollectionOutcome:
         return self.error is None
 
 
+def _assert_attribution(collector: Collector, records: list[RawOpportunity]) -> None:
+    """Reject records a collector attributed to some other source.
+
+    Stored rows are grouped by ``source_name``, and the closure sweep asks
+    "which of *this source's* rows were absent from what it just returned?". A
+    collector that mislabels its output would put rows outside the set its own
+    sweep examines, so they could never be closed. Failing the run makes that a
+    visible bug rather than a silent gap.
+    """
+    mismatched = {record.source_name for record in records if record.source_name != collector.name}
+    if mismatched:
+        raise CollectorError(
+            collector.name,
+            f"produced records attributed to {sorted(mismatched)}; a collector must "
+            f"label everything it returns with its own name",
+        )
+
+
 async def safe_collect(collector: Collector) -> CollectionOutcome:
     """Run ``collector``, converting any failure into a reported outcome.
 
@@ -92,6 +110,7 @@ async def safe_collect(collector: Collector) -> CollectionOutcome:
     started = time.monotonic()
     try:
         records = await collector.collect()
+        _assert_attribution(collector, records)
     except CollectorError as exc:
         duration = time.monotonic() - started
         logger.error(

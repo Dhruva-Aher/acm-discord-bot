@@ -11,7 +11,7 @@ none of that. It requests no moderation permissions and no privileged intents.
 
 ## What it does
 
-Right now (Milestones 1–4):
+Right now (Milestones 1–5):
 
 - Collects open internship listings from the
   [SimplifyJobs / Pitt CSC](https://github.com/SimplifyJobs/Summer2027-Internships)
@@ -21,15 +21,19 @@ Right now (Milestones 1–4):
 - Classifies each opportunity into ACM Special Interest Groups with a
   deterministic weighted keyword classifier — no LLM, no API call, no cost, and
   the same input always yields the same result.
-- Posts each new opportunity to a **private officer review channel** with
-  Approve / Reject / Open Source buttons. Nothing reaches members until an
-  officer approves it.
-- Publishes approved opportunities to the public opportunities channel, exactly
-  once, guaranteed at the database level.
+- Treats a source's first successful run as **baseline backlog**, so enabling
+  a source does not dump thousands of review cards on officers. Closures are
+  inferred only from a complete, plausible snapshot, never from a failed or
+  truncated feed, and published messages are edited in place to `[CLOSED]`.
+- Posts each new (non-baseline) opportunity to a **private officer review
+  channel** with Approve / Reject / Open Source buttons, unless an officer has
+  explicitly set that source to auto-publish. Nothing reaches members until
+  then.
+- Lets members browse with `/acm opportunities`, save interests with
+  `/acm subscribe`, and page through results that only they can control.
 
-Planned, not yet built: `/acm opportunities` browsing, `/acm subscribe`
-preferences, the ASU research radar, and ACM global conference tracking. See
-[Roadmap](#roadmap).
+Planned, not yet built: the ASU research radar and ACM global conference
+tracking. See [Roadmap](#roadmap).
 
 ### A rule worth stating up front
 
@@ -76,10 +80,18 @@ collector cannot post to Discord, and the pipeline cannot decide a channel.
 An opportunity moves through exactly these states:
 
 ```
-discovered ──▶ pending_review ──▶ approved ──▶ published
-                     │
-                     └──────────▶ rejected      (never re-queued)
+discovered ──▶ pending_review ──▶ approved ──▶ published ──▶ closed
+     ▲               │                              │
+     │               └──────────▶ rejected          │
+     │                     │                        │
+     └──── reconsider ─────┘                        │
+           (audit row kept)     source no longer lists it
 ```
+
+A source's first successful run stores rows as `discovered` with
+`is_baseline=true`, which holds them out of the review queue until an officer
+releases them. `closed` keeps the row and its publication records; the members'
+message is edited, never deleted.
 
 ### Layout
 
@@ -235,6 +247,10 @@ Optional:
 | `SCHEDULER_ENABLED` | `true` | Set `false` to disable background collection |
 | `INTERNSHIP_COLLECTION_INTERVAL_MINUTES` | `180` | Minimum 5 |
 | `REVIEW_QUEUE_BATCH_LIMIT` | `10` | Caps review cards posted per cycle |
+| `PUBLISH_BATCH_LIMIT` | `10` | Caps auto-approved posts per cycle |
+| `CLOSURE_DETECTION_ENABLED` | `true` | Infer closures from absence in a complete snapshot |
+| `CLOSURE_MIN_VOLUME_RATIO` | `0.5` | Skip closure if this run fetched less than this fraction of the last good run |
+| `CLOSURE_MAX_CLOSE_RATIO` | `0.3` | Skip closure if it would close more than this fraction of open rows |
 | `SIG_SCORE_THRESHOLD` | `0.25` | Minimum classifier score to tag a SIG |
 | `SIG_MAX_MATCHES` | `3` | Maximum SIGs shown on one opportunity |
 | `HTTP_TIMEOUT_SECONDS` | `30.0` | Per-request timeout for collectors |
@@ -251,12 +267,13 @@ the Discord gateway heartbeat.
 
 | Table | Contents |
 | --- | --- |
-| `opportunities` | The canonical record. `canonical_key` is **unique** |
-| `sources` | Registered collectors and their last successful run |
+| `opportunities` | The canonical record. `canonical_key` is **unique**. `is_baseline` / `closed_at` track import and closure. |
+| `opportunity_sigs` | Queryable projection of SIG matches. Unique on `(opportunity_id, sig)` |
+| `sources` | Collectors, `publication_policy`, and `initialized_at` (no hardcoded cutover date) |
 | `publication_records` | One row per publish. **Unique** on `(opportunity_id, channel_id)` |
 | `review_actions` | Officer decisions: reviewer ID, decision, reason, timestamp |
 | `subscriptions` | Member preferences by Discord user ID |
-| `collector_runs` | Per-run counts, duration and errors |
+| `collector_runs` | Per-run counts, duration, errors, and whether the run was a complete snapshot |
 
 Both duplicate-prevention guarantees are enforced by database constraints, not
 just by application code, so a race between two officers or two scheduler runs
@@ -283,17 +300,26 @@ Member commands:
 | Command | Description |
 | --- | --- |
 | `/acm status` | What ACM Hub is tracking and when each source last ran |
+| `/acm opportunities` | Browse published opportunities. Filters and paging are SQL. Saved interests apply when you pass no filters; `all:true` ignores them |
+| `/acm subscribe` | Save type and SIG interests. ACM Hub never sends DMs |
 
 Officer commands (hidden from members, and re-checked at runtime):
 
 | Command | Description |
 | --- | --- |
-| `/acm-admin queue` | List opportunities awaiting review |
+| `/acm-admin queue` | Review queue, filterable by type / SIG / organization / newest-first |
 | `/acm-admin approve <id>` | Approve and publish by ID |
+| `/acm-admin bulk-approve` | Preview a batch, confirm, then publish; partial failures are itemised |
 | `/acm-admin reject <id> [reason]` | Reject by ID |
+| `/acm-admin rejected` | Recently rejected opportunities |
+| `/acm-admin reconsider <id>` | Put a rejected opportunity back in the queue without touching the database |
 | `/acm-admin sync` | Run every collector now |
-| `/acm-admin health` | Database, scheduler, gateway latency, last runs |
+| `/acm-admin health` | Database, scheduler, sources, counts. No tokens, URLs or traces |
 | `/acm-admin requeue` | Re-post review cards after a channel outage |
+| `/acm-admin source list` | Every source, its policy, and how much baseline it is holding |
+| `/acm-admin source policy` | `manual_review` / `auto_publish` / `disabled` — data, not a name check |
+| `/acm-admin source release-baseline` | Release a bounded slice of backlog into the queue, with confirmation |
+| `/acm-admin source reset-initialization` | Next run is an initial import again |
 
 All commands are Discord application (slash) commands. There are deliberately no
 prefix commands such as `!opportunities`, and a test asserts none exist.
@@ -311,6 +337,17 @@ prefix commands such as `!opportunities`, and a test asserts none exist.
      `rejected` and is **never re-queued**, even if the upstream posting changes.
    - **Open Source** → a plain link to the upstream source.
 4. The card is stamped with the decision and its buttons are removed.
+5. `/acm-admin reconsider <id>` is the supported way to undo a rejection. The
+   original `review_actions` row stays; the opportunity goes back to
+   `discovered` so a new card can be posted.
+
+**Bulk approve.** `/acm-admin bulk-approve` always previews and requires a
+second press. The batch size is capped. Each approval is an individual audit
+row; a rate-limit on the fifth post does not hide the four that succeeded.
+
+**Source policy.** New sources are `manual_review`. Auto-publish is never the
+default and is never inferred from the source's name. An initial import is
+never auto-published even if the policy is already `auto_publish`.
 
 **Idempotency.** Two officers pressing Approve at the same instant produce one
 decision and one post. The decision is a conditional `UPDATE` restricted to
@@ -325,28 +362,48 @@ If publishing fails (rate limit, channel deleted), the opportunity stays
 ## Testing
 
 ```bash
-pytest                       # full suite
+pytest                       # SQLite suite (default; no secrets, no network)
 pytest tests/unit            # fast, no database
 pytest --cov=acm_hub         # with coverage
+pytest -m postgres           # PostgreSQL concurrency + migration tests
 ruff check . && ruff format --check . && mypy
 ```
 
-300 tests. They never touch the network and never connect to Discord: HTTP is
-mocked with `respx` against a fixture captured from the real upstream feed, and
-the database is SQLite. CI therefore needs no secrets.
+PostgreSQL tests are collected only when `ACMHUB_POSTGRES_URL` is set to a
+`postgresql+asyncpg://` URL pointing at an empty-able database. CI runs them
+against a Postgres 16 service container. Locally:
+
+```bash
+export ACMHUB_POSTGRES_URL=postgresql+asyncpg://acm_hub:acm_hub@localhost:5432/acm_hub_test
+pytest -m postgres
+```
+
+The SQLite suite never touches the network and never connects to Discord: HTTP
+is mocked with `respx` against a fixture captured from the real upstream feed.
+CI therefore needs no secrets for that job.
+
+Live Discord behaviour is **not** claimed by CI. Work through
+[`docs/LIVE_DISCORD_CHECKLIST.md`](docs/LIVE_DISCORD_CHECKLIST.md) on a real
+guild; do not tick an item you did not actually run.
 
 Coverage focuses on the things that would actually hurt in production: URL
 normalization and canonical keys, content-change detection, SIG classification
 including ambiguous and word-boundary cases, malformed and wholly-changed
-upstream data, approval and publication idempotency under concurrency,
-subscription persistence, configuration validation, and migration/model parity.
+upstream data, baseline import, closure guards, source trust policy, approval
+and publication idempotency under concurrency (PostgreSQL), member search
+paging in SQL, subscription independence, configuration validation, and
+migration/model parity.
 
 ## Adding a collector
 
 1. Create a class in `src/acm_hub/collectors/` that subclasses `Collector` and
    implements `async def collect(self) -> list[RawOpportunity]`.
 2. Set `name` (stable and permanent — it is persisted on every record it
-   produces), `display_name` and `source_url`.
+   produces), `display_name` and `source_url`. Set
+   `produces_complete_snapshot = True` only if a successful `collect()` returns
+   every currently-open listing the source knows about. Leave it `False`
+   (the default) for paginated or incremental sources — otherwise ACM Hub
+   would treat "not on this page" as "closed".
 3. Keep every source-specific quirk inside the class. Parse defensively: skip
    and count individual bad records, and raise `CollectorError` only when the
    source as a whole is unusable.
@@ -442,10 +499,11 @@ officer role, or grant Manage Server.
 | 2 | Canonical model, collector interface, Simplify collector | Done |
 | 3 | Deduplication, change detection, SIG classifier, persistence | Done |
 | 4 | Officer review, approve/reject, publishing, idempotency | Done |
-| 5 | `/acm opportunities`, subscriptions, filtering and search | Next |
-| 6 | ASU Ready-to-Mentor and FURI research radar, `/acm research` | Planned |
+| 4.5 | Baseline import, closure detection, source trust policy, review-queue ops | Done |
+| 5 | `/acm opportunities`, subscriptions, filtering and search | Done |
+| 6 | ASU Ready-to-Mentor and FURI research radar, `/acm research` | Not started |
 | 7 | One official ACM source: conferences, programs, deadlines | Planned |
-| 8 | Production hardening | Partly done (Docker, CI, docs) |
+| 8 | Remaining production ops (multi-instance, alerting) | Partial |
 
 The research radar will only label a professor as recruiting when an
 authoritative ASU source explicitly says so — publication records, grants and

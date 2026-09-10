@@ -31,6 +31,10 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "LOG_LEVEL",
         "LOG_FORMAT",
         "SCHEDULER_ENABLED",
+        "PUBLISH_BATCH_LIMIT",
+        "CLOSURE_DETECTION_ENABLED",
+        "CLOSURE_MIN_VOLUME_RATIO",
+        "CLOSURE_MAX_CLOSE_RATIO",
     ):
         monkeypatch.delenv(key, raising=False)
 

@@ -14,10 +14,12 @@ import discord
 import pytest
 
 from acm_hub.bot.embeds.opportunity import (
+    CLOSED_PREFIX,
     MAX_LOCATIONS_SHOWN,
     build_opportunity_embed,
     build_review_embed,
     format_locations,
+    mark_embed_closed,
     truncate,
 )
 from acm_hub.db import models
@@ -218,3 +220,26 @@ def test_unreadable_sig_json_degrades_gracefully() -> None:
     row.sig_matches = [{"unexpected": "shape"}]
     embed = build_opportunity_embed(row, now=datetime.now(tz=UTC))
     assert field_value(embed, "Relevant SIGs") == "None matched"
+
+
+class TestClosedEmbed:
+    def test_the_title_is_prefixed_and_the_link_is_removed(self) -> None:
+        original = build_opportunity_embed(build_row(), now=FROZEN_NOW)
+        closed = mark_embed_closed(original)
+        assert closed.title is not None
+        assert closed.title.startswith(CLOSED_PREFIX)
+        assert closed.url is None
+        assert closed.author.name == "Closed"
+        assert "no longer published" in field_value(closed, "Status")
+
+    def test_prefixing_twice_does_not_stack(self) -> None:
+        original = build_opportunity_embed(build_row(), now=FROZEN_NOW)
+        twice = mark_embed_closed(mark_embed_closed(original))
+        assert twice.title is not None
+        assert twice.title.count(CLOSED_PREFIX) == 1
+
+    def test_the_closed_embed_stays_within_discord_limits(self) -> None:
+        row = build_row(title="x" * 500, description="z" * 5000)
+        embed = mark_embed_closed(build_opportunity_embed(row, now=FROZEN_NOW))
+        assert embed.title is not None and len(embed.title) <= 256
+        assert len(embed) <= 6000
