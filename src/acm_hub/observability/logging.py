@@ -37,14 +37,16 @@ def configure_logging(level: str = "INFO", log_format: str = "console") -> None:
         else structlog.processors.JSONRenderer()
     )
 
+    # Everything goes through stdlib logging, including our own structlog calls.
+    # That keeps one handler, one format and one level for the whole process,
+    # and it is required by `add_logger_name`, which reads the stdlib logger.
     structlog.configure(
         processors=[
             *shared_processors,
-            structlog.processors.format_exc_info,
-            renderer,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(numeric_level),
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
 
@@ -54,6 +56,7 @@ def configure_logging(level: str = "INFO", log_format: str = "console") -> None:
             foreign_pre_chain=shared_processors,
             processors=[
                 structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+                structlog.processors.format_exc_info,
                 renderer,
             ],
         )

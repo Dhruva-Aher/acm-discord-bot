@@ -17,9 +17,10 @@ from discord.ext import commands
 
 from acm_hub.bot.embeds.opportunity import truncate
 from acm_hub.bot.permissions import is_officer
+from acm_hub.db import models
 from acm_hub.db.repositories.collector_runs import CollectorRunRepository
 from acm_hub.db.repositories.opportunities import OpportunityRepository
-from acm_hub.domain.enums import ReviewDecision
+from acm_hub.domain.enums import OpportunityStatus, ReviewDecision
 from acm_hub.observability.logging import get_logger
 from acm_hub.publishing.discord import ChannelUnavailableError
 
@@ -185,9 +186,16 @@ class AdminCommands(commands.Cog):
         await interaction.response.defer(ephemeral=True, thinking=True)
 
         database_ok = await self.bot.database.check_connection()
-        async with self.bot.database.session() as session:
-            runs = await CollectorRunRepository(session).latest_per_collector()
-            counts = await OpportunityRepository(session).count_by_status()
+
+        # Querying a database we already know is unreachable would raise and
+        # turn the health command into another outage, so the counts are simply
+        # omitted when the connection check fails.
+        runs: list[models.CollectorRun] = []
+        counts: dict[OpportunityStatus, int] = {}
+        if database_ok:
+            async with self.bot.database.session() as session:
+                runs = await CollectorRunRepository(session).latest_per_collector()
+                counts = await OpportunityRepository(session).count_by_status()
 
         embed = discord.Embed(
             title="ACM Hub health",

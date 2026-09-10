@@ -1,0 +1,53 @@
+name: acm-hub
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-acm_hub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-acm_hub}
+      POSTGRES_DB: ${POSTGRES_DB:-acm_hub}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # The bot waits on this, so it must report ready rather than just running.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-acm_hub} -d ${POSTGRES_DB:-acm_hub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      # Exposed for local inspection with psql. Remove in production.
+      - "${POSTGRES_PORT:-55432}:5432"
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-acm_hub}:${POSTGRES_PASSWORD:-acm_hub}@db:5432/${POSTGRES_DB:-acm_hub}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Overrides whatever DATABASE_URL is in .env so the container always
+      # targets the compose database rather than a developer's local one.
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-acm_hub}:${POSTGRES_PASSWORD:-acm_hub}@db:5432/${POSTGRES_DB:-acm_hub}
+      LOG_FORMAT: ${LOG_FORMAT:-text}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    # Give the graceful shutdown path time to stop the scheduler, close the
+    # gateway and dispose the connection pool before SIGKILL.
+    stop_grace_period: 30s
+
+volumes:
+  postgres_data:

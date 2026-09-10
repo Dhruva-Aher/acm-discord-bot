@@ -57,6 +57,8 @@ select = [
     "TID",  # tidy imports
     "BLE",  # blind except - every one must be justified with a noqa
     "S",    # bandit security checks
+    "T20",  # print statements must be justified
+    "SLF",  # private member access
     "RUF",
 ]
 ignore = [

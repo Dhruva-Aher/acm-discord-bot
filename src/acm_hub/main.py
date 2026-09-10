@@ -32,13 +32,17 @@ def load_settings() -> Settings:
     try:
         return get_settings()
     except ValidationError as exc:
-        # Printed rather than logged: logging is not configured yet, and the
-        # error text contains field names only, never values.
-        print("ACM Hub configuration is invalid:", file=sys.stderr)
-        for error in exc.errors():
-            field = ".".join(str(part) for part in error["loc"])
-            print(f"  - {field.upper()}: {error['msg']}", file=sys.stderr)
-        print("\nSee .env.example for the full list of required variables.", file=sys.stderr)
+        # Written directly to stderr rather than logged: logging is configured
+        # from these very settings, so it does not exist yet. Only field names
+        # and pydantic's messages are shown, never the offending values, so a
+        # malformed token cannot end up in a container log.
+        lines = ["ACM Hub configuration is invalid:"]
+        lines += [
+            f"  - {'.'.join(str(part) for part in error['loc']).upper()}: {error['msg']}"
+            for error in exc.errors()
+        ]
+        lines.append("\nSee .env.example for the full list of required variables.")
+        sys.stderr.write("\n".join(lines) + "\n")
         raise SystemExit(2) from exc
 
 
