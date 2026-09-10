@@ -46,6 +46,20 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     internship_collection_interval_minutes: int = Field(default=180, ge=5)
     review_queue_batch_limit: int = Field(default=10, ge=1, le=50)
+    #: Upper bound on posts per publishing pass, so an auto-publishing source
+    #: paces itself instead of dumping a backlog into the members' channel.
+    publish_batch_limit: int = Field(default=10, ge=1, le=50)
+
+    #: Master switch for inferring closure from absence. Turning it off leaves
+    #: everything published; it never causes closures.
+    closure_detection_enabled: bool = True
+    #: Skip the closure sweep when a run returned less than this fraction of
+    #: the previous successful run's record count - the signature of a
+    #: truncated feed rather than of mass closures.
+    closure_min_volume_ratio: float = Field(default=0.5, gt=0.0, le=1.0)
+    #: Skip the closure sweep when it would close more than this fraction of a
+    #: source's open opportunities. Tripping it needs an officer's judgement.
+    closure_max_close_ratio: float = Field(default=0.3, gt=0.0, le=1.0)
 
     http_timeout_seconds: float = Field(default=30.0, gt=0)
     http_max_retries: int = Field(default=3, ge=0, le=10)

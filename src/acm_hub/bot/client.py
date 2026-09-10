@@ -17,7 +17,7 @@ from acm_hub.collectors.github.simplify import SimplifyCollector
 from acm_hub.config.settings import Settings
 from acm_hub.db.session import Database
 from acm_hub.observability.logging import get_logger
-from acm_hub.pipeline.process import OpportunityPipeline
+from acm_hub.pipeline.process import ClosureGuard, OpportunityPipeline
 from acm_hub.publishing.approval import ApproveButton, RejectButton
 from acm_hub.publishing.discord import OpportunityPublisher
 from acm_hub.scheduler.jobs import CollectionScheduler
@@ -58,6 +58,11 @@ class AcmHubBot(commands.Bot):
             database,
             sig_threshold=settings.sig_score_threshold,
             sig_max_matches=settings.sig_max_matches,
+            closure_detection_enabled=settings.closure_detection_enabled,
+            closure_guard=ClosureGuard(
+                min_volume_ratio=settings.closure_min_volume_ratio,
+                max_close_ratio=settings.closure_max_close_ratio,
+            ),
         )
 
         self.publisher = OpportunityPublisher(
@@ -75,6 +80,7 @@ class AcmHubBot(commands.Bot):
             publisher=self.publisher,
             collectors=self.collectors,
             review_batch_limit=settings.review_queue_batch_limit,
+            publish_batch_limit=settings.publish_batch_limit,
         )
 
     @property

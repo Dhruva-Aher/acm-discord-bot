@@ -15,6 +15,7 @@ is released so a later retry can try again.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass, field
 from uuid import UUID
 
 import discord
@@ -27,7 +28,7 @@ from acm_hub.bot.embeds.opportunity import (
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
-from acm_hub.domain.enums import OpportunityStatus
+from acm_hub.domain.enums import OpportunityStatus, ReviewDecision
 from acm_hub.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -35,6 +36,49 @@ logger = get_logger(__name__)
 
 class ChannelUnavailableError(RuntimeError):
     """A configured channel ID does not resolve to a channel we can post in."""
+
+
+@dataclass(slots=True)
+class BulkApprovalResult:
+    """What a bulk approval actually managed to do.
+
+    Reported in full rather than as a single success/failure, because the
+    realistic outcome of approving twenty postings at once is that most work
+    and one hits a rate limit. An officer needs to know which.
+    """
+
+    published: list[UUID] = field(default_factory=list)
+    #: Approved by someone else, or already published, between the officer
+    #: opening the confirmation and confirming it.
+    already_decided: list[UUID] = field(default_factory=list)
+    #: Approved in the database but not posted; the publish pass will retry.
+    failed: list[tuple[UUID, str]] = field(default_factory=list)
+
+    @property
+    def attempted(self) -> int:
+        return len(self.published) + len(self.already_decided) + len(self.failed)
+
+    def summary(self) -> str:
+        """A short report an officer can act on."""
+        if not self.attempted:
+            return "Nothing matched, so nothing was approved."
+
+        lines = [f"Published {len(self.published)} of {self.attempted}."]
+        if self.already_decided:
+            lines.append(
+                f"{len(self.already_decided)} had already been decided by another officer."
+            )
+        if self.failed:
+            lines.append(
+                f"{len(self.failed)} could not be posted and stay approved for the next "
+                "publish pass:"
+            )
+            lines.extend(
+                f"\u2022 `{identifier}` \u2014 {reason}" for identifier, reason in self.failed[:5]
+            )
+            if len(self.failed) > 5:
+                lines.append(f"\u2022 \u2026and {len(self.failed) - 5} more; see the logs.")
+        return "\n".join(lines)
 
 
 class OpportunityPublisher:
@@ -222,6 +266,55 @@ class OpportunityPublisher:
         if published:
             logger.info("publish.batch_finished", published=published, candidates=len(pending))
         return published
+
+    async def approve_and_publish_many(
+        self, opportunity_ids: Sequence[UUID], *, reviewer_discord_id: int
+    ) -> BulkApprovalResult:
+        """Approve and publish several opportunities, reporting each outcome.
+
+        One posting failing does not abandon the rest, and every approval is
+        still recorded individually in ``review_actions`` with the officer who
+        made it, so a bulk action is as auditable as twenty button presses.
+        """
+        result = BulkApprovalResult()
+
+        for opportunity_id in opportunity_ids:
+            async with self._database.session() as session:
+                accepted = await OpportunityRepository(session).record_decision(
+                    opportunity_id,
+                    decision=ReviewDecision.APPROVED,
+                    reviewer_discord_id=reviewer_discord_id,
+                    reason="bulk approval",
+                )
+            if not accepted:
+                result.already_decided.append(opportunity_id)
+                continue
+
+            try:
+                published = await self.publish_approved(opportunity_id)
+            except (discord.HTTPException, ChannelUnavailableError) as exc:
+                logger.error(
+                    "publish.bulk_item_failed",
+                    opportunity_id=str(opportunity_id),
+                    error=f"{type(exc).__name__}: {exc}",
+                    exc_info=True,
+                )
+                result.failed.append((opportunity_id, type(exc).__name__))
+                continue
+
+            if published is None:
+                result.already_decided.append(opportunity_id)
+            else:
+                result.published.append(opportunity_id)
+
+        logger.info(
+            "publish.bulk_finished",
+            reviewer_id=reviewer_discord_id,
+            published=len(result.published),
+            already_decided=len(result.already_decided),
+            failed=len(result.failed),
+        )
+        return result
 
     async def mark_published_messages_closed(self, opportunity_ids: Sequence[UUID]) -> int:
         """Edit the members' posts for opportunities that have closed.

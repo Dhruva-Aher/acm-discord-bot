@@ -53,13 +53,15 @@ async def invoke(cog: commands.Cog, command: Any, *args: Any) -> None:
 
 
 def command_names(cog: AcmCommands | AdminCommands) -> set[str]:
-    names: set[str] = set()
-    for command in cog.__cog_app_commands__:
+    """Every invocable command path the cog registers, subgroups included."""
+
+    def walk(command: Any, prefix: str) -> set[str]:
+        path = f"{prefix} {command.name}".strip()
         if isinstance(command, app_commands.Group):
-            names |= {f"{command.name} {child.name}" for child in command.commands}
-        else:
-            names.add(command.name)
-    return names
+            return {name for child in command.commands for name in walk(child, path)}
+        return {path}
+
+    return {name for command in cog.__cog_app_commands__ for name in walk(command, "")}
 
 
 class TestCommandRegistration:
@@ -70,10 +72,17 @@ class TestCommandRegistration:
         assert command_names(AdminCommands(bot)) == {
             "acm-admin queue",
             "acm-admin approve",
+            "acm-admin bulk-approve",
             "acm-admin reject",
+            "acm-admin rejected",
+            "acm-admin reconsider",
             "acm-admin sync",
             "acm-admin health",
             "acm-admin requeue",
+            "acm-admin source list",
+            "acm-admin source policy",
+            "acm-admin source release-baseline",
+            "acm-admin source reset-initialization",
         }
 
     def test_admin_group_is_hidden_from_ordinary_members(self, bot: MagicMock) -> None:
@@ -138,7 +147,7 @@ class TestQueueCommand:
         cog = AdminCommands(bot)
         interaction = fake_interaction(bot)
         await invoke(cog, cog.queue, interaction)
-        assert "empty" in interaction.followup.send.await_args.args[0]
+        assert "No opportunities awaiting review" in interaction.followup.send.await_args.args[0]
 
     async def test_pending_opportunities_are_listed_with_their_ids(
         self, bot: MagicMock, database: Database
