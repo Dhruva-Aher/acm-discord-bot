@@ -69,7 +69,9 @@ class TestResearchBrowse:
         assert "Aman Arora" in description
         assert "Hidden mentor" not in description
         assert "Compiler Intern" not in description
-        assert sent_embed(interaction).title.startswith("Research")
+        title = sent_embed(interaction).title
+        assert title is not None
+        assert title.startswith("Research")
 
     async def test_saved_types_do_not_hide_research(
         self, bot: MagicMock, database: Database
