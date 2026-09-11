@@ -36,7 +36,7 @@ import re
 from html import unescape
 from html.parser import HTMLParser
 from typing import Any, Final
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -96,14 +96,15 @@ def _text(value: Any) -> str:
     return ""
 
 
-def _absolute_http_url(value: Any) -> str | None:
+def _absolute_http_url(value: Any, *, base: str = SOURCE_PAGE_URL) -> str | None:
     text = _text(value)
     if not text:
         return None
-    parsed = urlparse(text)
+    resolved = urljoin(base, text)
+    parsed = urlparse(resolved)
     if parsed.scheme not in {"http", "https"} or not parsed.netloc:
         return None
-    return text
+    return resolved
 
 
 def _location_name(value: Any) -> str | None:
@@ -182,7 +183,8 @@ class _ConferenceCardParser(HTMLParser):
 
         if tag == "a" and not self._card["href"] and attributes.get("href"):
             href = attributes["href"].strip()
-            if urlparse(href).scheme in {"http", "https"}:
+            scheme = urlparse(urljoin(SOURCE_PAGE_URL, href)).scheme
+            if scheme in {"http", "https"}:
                 self._card["href"] = href
                 self._capture = "name"
                 self._buffer = []

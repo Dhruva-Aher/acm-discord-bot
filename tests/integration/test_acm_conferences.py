@@ -66,6 +66,19 @@ class TestParseOfficialConferences:
             assert record.expires_at is None
             assert record.description is None
 
+    def test_relative_official_urls_are_resolved(self) -> None:
+        html = """
+        <html><body>
+        <article class="acm-conference">
+          <h3><a href="/conference/chi">CHI Conference on Human Factors</a></h3>
+          <p class="location">Yokohama, Japan</p>
+        </article>
+        </body></html>
+        """
+        records = parse_official_conferences(html)
+        assert len(records) == 1
+        assert records[0].application_url == "https://www.acm.org/conference/chi"
+
     def test_records_are_conferences_claimed_by_the_source(self, acm_conferences_html: str) -> None:
         record = parse_official_conferences(acm_conferences_html)[0]
         assert record.opportunity_type is OpportunityType.CONFERENCE
@@ -125,6 +138,19 @@ class TestCollect:
         collector = _collector()
         try:
             with pytest.raises(CollectorError, match="could not reach"):
+                await collector.collect()
+        finally:
+            await collector.aclose()
+
+    async def test_just_a_moment_challenge_fails_instead_of_parsing(self) -> None:
+        html = (
+            "<html><title>Just a moment...</title>"
+            "<p>Performance and security by Cloudflare</p></html>"
+        )
+        respx.get(DEFAULT_CONFERENCES_URL).mock(return_value=httpx.Response(200, text=html))
+        collector = _collector()
+        try:
+            with pytest.raises(CollectorError, match="bot protection"):
                 await collector.collect()
         finally:
             await collector.aclose()

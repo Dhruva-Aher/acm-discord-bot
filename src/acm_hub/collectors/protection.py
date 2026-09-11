@@ -22,9 +22,9 @@ BLOCK_MARKERS: Final[tuple[str, ...]] = (
 
 def looks_like_bot_protection(body: str, *, content_type: str | None = None) -> bool:
     """Return True when ``body`` is a bot-protection page rather than source data."""
+    del content_type
     lowered = body.lower()
     if any(marker in lowered for marker in BLOCK_MARKERS):
         return True
-    if content_type and "text/html" in content_type.lower() and "just a moment" in lowered:
-        return "cloudflare" in lowered
-    return False
+    # Cloudflare's JS challenge is often a 200 with this title, not the hard block.
+    return "just a moment" in lowered and "cloudflare" in lowered

@@ -35,6 +35,7 @@ from __future__ import annotations
 from html import unescape
 from html.parser import HTMLParser
 from typing import Final
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
@@ -68,9 +69,12 @@ THEME_LABELS: Final[dict[str, str]] = {
     "sustainability": "sustainability",
 }
 
-READY_SECTION_MARKERS: Final[tuple[str, ...]] = (
-    "ready to mentor",
+#: Structural markers for the recruiting list. The phrase "Ready to mentor"
+#: also appears in the page's Open Graph description, so matching on that
+#: text alone would treat a redesigned page as a successful empty snapshot.
+READY_STRUCTURE_MARKERS: Final[tuple[str, ...]] = (
     "mentor-ready-block",
+    "ready-mentor",
 )
 
 
@@ -189,6 +193,18 @@ def parse_ready_mentor_page(html: str) -> list[dict[str, str]]:
     return parser.cards
 
 
+def _absolute_profile_url(href: str) -> str | None:
+    """Resolve a faculty profile href against the official mentors page."""
+    trimmed = href.strip()
+    if not trimmed:
+        return None
+    resolved = urljoin(SOURCE_PAGE_URL, trimmed)
+    parts = urlparse(resolved)
+    if parts.scheme not in {"http", "https"} or not parts.netloc:
+        return None
+    return resolved
+
+
 def parse_mentor_card(card: dict[str, str]) -> RawOpportunity:
     """Turn one parsed card into a :class:`RawOpportunity`.
 
@@ -196,8 +212,8 @@ def parse_mentor_card(card: dict[str, str]) -> RawOpportunity:
         MalformedMentorError: the card is missing a name or official profile URL.
     """
     name = card.get("name", "").strip()
-    href = card.get("href", "").strip()
-    if not name or not href:
+    href = _absolute_profile_url(card.get("href", ""))
+    if not name or href is None:
         raise MalformedMentorError("mentor card is missing a name or profile URL")
 
     programs = _program_labels(card.get("programs", ""))
@@ -235,7 +251,7 @@ def parse_mentor_card(card: dict[str, str]) -> RawOpportunity:
 
 def _page_looks_like_mentors(html: str) -> bool:
     lowered = html.lower()
-    return any(marker in lowered for marker in READY_SECTION_MARKERS)
+    return any(marker in lowered for marker in READY_STRUCTURE_MARKERS)
 
 
 class AsuReadyToMentorCollector(Collector):

@@ -500,3 +500,46 @@ class TestResearchChannelRouting:
 
         assert published is not None
         assert channels[OPPORTUNITIES_CHANNEL_ID].send.await_count == 1
+
+    async def test_already_published_research_is_not_reposted_to_a_new_channel(
+        self, database: Database
+    ) -> None:
+        """Adding RESEARCH_CHANNEL_ID later must not create a second member post."""
+        opportunities = fake_channel(OPPORTUNITIES_CHANNEL_ID)
+        research = fake_channel(RESEARCH_CHANNEL_ID)
+        first = OpportunityPublisher(
+            fake_client(
+                {
+                    OPPORTUNITIES_CHANNEL_ID: opportunities,
+                    REVIEW_CHANNEL_ID: fake_channel(REVIEW_CHANNEL_ID),
+                }
+            ),
+            database,
+            opportunities_channel_id=OPPORTUNITIES_CHANNEL_ID,
+            officer_review_channel_id=REVIEW_CHANNEL_ID,
+        )
+        row = await seed(
+            database,
+            title="Ready to mentor: Test Faculty",
+            organization="Test Faculty",
+            opportunity_type=OpportunityType.RESEARCH,
+            application_url="https://forge.engineering.asu.edu/faculty_mentor/test-3/",
+        )
+        assert await first.publish_approved(row.id) is not None
+
+        second = OpportunityPublisher(
+            fake_client(
+                {
+                    OPPORTUNITIES_CHANNEL_ID: opportunities,
+                    REVIEW_CHANNEL_ID: fake_channel(REVIEW_CHANNEL_ID),
+                    RESEARCH_CHANNEL_ID: research,
+                }
+            ),
+            database,
+            opportunities_channel_id=OPPORTUNITIES_CHANNEL_ID,
+            officer_review_channel_id=REVIEW_CHANNEL_ID,
+            research_channel_id=RESEARCH_CHANNEL_ID,
+        )
+        assert await second.publish_approved(row.id) is None
+        assert research.send.await_count == 0
+        assert opportunities.send.await_count == 1

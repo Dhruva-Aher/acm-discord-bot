@@ -110,7 +110,7 @@ class OpportunityPublisher:
         there is no unused conference-channel setting.
         """
         if (
-            row.opportunity_type is OpportunityType.RESEARCH
+            row.opportunity_type == OpportunityType.RESEARCH
             and self._research_channel_id is not None
         ):
             return self._research_channel_id
@@ -216,6 +216,9 @@ class OpportunityPublisher:
             row = await repository.get(opportunity_id)
             if row is None:
                 logger.warning("publish.missing_opportunity", opportunity_id=str(opportunity_id))
+                return None
+            if row.status == OpportunityStatus.PUBLISHED:
+                logger.info("publish.already_published", opportunity_id=str(opportunity_id))
                 return None
             channel_id = self._member_channel_id(row)
             claimed = await repository.record_publication(

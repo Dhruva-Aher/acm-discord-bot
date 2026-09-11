@@ -111,6 +111,22 @@ class TestParseMentorCard:
                 {"name": "", "href": "https://forge.engineering.asu.edu/faculty_mentor/x/"}
             )
 
+    def test_relative_profile_urls_are_resolved_against_the_official_page(self) -> None:
+        raw = parse_mentor_card(
+            {
+                "name": "Test Faculty",
+                "href": "/faculty_mentor/test-faculty/",
+                "asurite": "tfaculty",
+                "programs": "furi",
+                "projects": "data",
+                "dept": "",
+                "text": "Compilers",
+            }
+        )
+        assert raw.application_url == (
+            "https://forge.engineering.asu.edu/faculty_mentor/test-faculty/"
+        )
+
 
 class TestCollect:
     async def test_returns_ready_mentors_and_skips_expo(self, asu_mentors_html: str) -> None:
@@ -140,6 +156,27 @@ class TestCollect:
         collector = _collector()
         try:
             assert await collector.collect() == []
+        finally:
+            await collector.aclose()
+
+    async def test_og_description_alone_is_not_a_ready_section(self) -> None:
+        """The live page puts 'Ready to mentor' in meta text. That is not the list."""
+        html = """
+        <html><head>
+        <meta property="og:description"
+              content="Ready to mentor The following faculty members are looking for students." />
+        </head><body>
+        <h2>Mentors from the current expo</h2>
+        <div class="uds-person-profile"><h3 class="person-name">
+        <a href="https://forge.engineering.asu.edu/faculty_mentor/expo-only/">Expo Only</a>
+        </h3></div>
+        </body></html>
+        """
+        respx.get(DEFAULT_MENTORS_URL).mock(return_value=httpx.Response(200, text=html))
+        collector = _collector()
+        try:
+            with pytest.raises(CollectorError, match="Ready to mentor"):
+                await collector.collect()
         finally:
             await collector.aclose()
 
