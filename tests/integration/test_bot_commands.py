@@ -69,6 +69,8 @@ class TestCommandRegistration:
         assert command_names(AcmCommands(bot)) == {
             "acm status",
             "acm opportunities",
+            "acm research",
+            "acm conferences",
             "acm subscribe",
         }
 

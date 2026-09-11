@@ -49,6 +49,27 @@ def fixtures_dir() -> Path:
 
 
 @pytest.fixture
+def asu_mentors_html() -> str:
+    """Trimmed capture of the official Fulton Forge mentors page.
+
+    Includes the Ready-to-mentor section and the expo-only section so tests
+    can prove expo mentors are never treated as recruiting.
+    """
+    return (FIXTURE_DIR / "asu_mentors.html").read_text()
+
+
+@pytest.fixture
+def acm_conferences_html() -> str:
+    """Official-format ACM conferences listing used by the collector tests."""
+    return (FIXTURE_DIR / "acm_conferences.html").read_text()
+
+
+@pytest.fixture
+def acm_cloudflare_html() -> str:
+    return (FIXTURE_DIR / "acm_cloudflare_block.html").read_text()
+
+
+@pytest.fixture
 def simplify_listings() -> list[dict[str, Any]]:
     """A trimmed but unmodified slice of the real upstream feed.
 

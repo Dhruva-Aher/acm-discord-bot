@@ -1,8 +1,7 @@
 """Member-facing ``/acm`` commands.
 
-Three commands ship here: ``status``, ``opportunities`` and ``subscribe``.
-``/acm research`` belongs to a later milestone and is deliberately absent -
-registering a command that does nothing useful is worse than not having it.
+Five commands ship here: ``status``, ``opportunities``, ``research``,
+``conferences`` and ``subscribe``.
 
 Two properties are enforced throughout.
 
@@ -113,6 +112,109 @@ class AcmCommands(commands.Cog):
         if explicit.is_empty and not all:
             filters, personalized = await self._personalized_filters(interaction.user.id)
 
+        await self._send_browse(
+            interaction,
+            filters=filters,
+            personalized=personalized,
+            title_noun="Opportunities",
+            empty=self._no_results_message(personalized=personalized, all_requested=all),
+        )
+
+    @acm.command(
+        name="research", description="Browse ASU faculty currently labelled ready to mentor"
+    )
+    @app_commands.describe(
+        sig="Only show mentors matched to this SIG",
+        faculty="Only show faculty whose name matches this text",
+        search="Match this text against the title or faculty name",
+        all="Ignore your saved SIG interests",
+    )
+    @app_commands.choices(sig=SIG_CHOICES)
+    async def research(
+        self,
+        interaction: discord.Interaction,
+        sig: app_commands.Choice[str] | None = None,
+        faculty: str | None = None,
+        search: str | None = None,
+        all: bool = False,
+    ) -> None:
+        """Search published research mentorships only.
+
+        Saved opportunity *types* are ignored: this command already means
+        research. Saved SIGs still apply when the member passed no other
+        filter, and that is disclosed the same way as ``/acm opportunities``.
+        """
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        filters, personalized = await self._scoped_filters(
+            interaction.user.id,
+            locked_type=OpportunityType.RESEARCH,
+            sig=sig.value if sig else None,
+            organization=faculty,
+            query=search,
+            ignore_saved=all,
+        )
+        await self._send_browse(
+            interaction,
+            filters=filters,
+            personalized=personalized,
+            title_noun="Research",
+            empty=self._scoped_empty_message(
+                kind="research mentorships",
+                command="research",
+                personalized=personalized,
+                all_requested=all,
+            ),
+        )
+
+    @acm.command(
+        name="conferences", description="Browse official ACM conferences ACM Hub has published"
+    )
+    @app_commands.describe(
+        sig="Only show conferences matched to this SIG",
+        search="Match this text against the title or organizer",
+        all="Ignore your saved SIG interests",
+    )
+    @app_commands.choices(sig=SIG_CHOICES)
+    async def conferences(
+        self,
+        interaction: discord.Interaction,
+        sig: app_commands.Choice[str] | None = None,
+        search: str | None = None,
+        all: bool = False,
+    ) -> None:
+        """Search published official ACM conferences only."""
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        filters, personalized = await self._scoped_filters(
+            interaction.user.id,
+            locked_type=OpportunityType.CONFERENCE,
+            sig=sig.value if sig else None,
+            query=search,
+            ignore_saved=all,
+        )
+        await self._send_browse(
+            interaction,
+            filters=filters,
+            personalized=personalized,
+            title_noun="Conferences",
+            empty=self._scoped_empty_message(
+                kind="conferences",
+                command="conferences",
+                personalized=personalized,
+                all_requested=all,
+            ),
+        )
+
+    async def _send_browse(
+        self,
+        interaction: discord.Interaction,
+        *,
+        filters: OpportunityFilters,
+        personalized: str | None,
+        title_noun: str,
+        empty: str,
+    ) -> None:
+        """Fetch one page and reply with results or the empty-state copy."""
+
         async def fetch(offset: int) -> Page[models.Opportunity]:
             async with self.bot.database.session() as session:
                 repository = OpportunityRepository(session)
@@ -125,20 +227,50 @@ class AcmCommands(commands.Cog):
         page = await fetch(0)
 
         if not page.items:
-            await interaction.followup.send(
-                self._no_results_message(personalized=personalized, all_requested=all),
-                ephemeral=True,
-            )
+            await interaction.followup.send(empty, ephemeral=True)
             return
 
         def render(current: Page[models.Opportunity]) -> discord.Embed:
-            return self._results_embed(current, personalized=personalized)
+            return self._results_embed(current, personalized=personalized, title_noun=title_noun)
 
         view = PaginatedView(interaction.user.id, fetch_page=fetch, render=render, page=page)
         message = await interaction.followup.send(
             embed=view.embed(), view=view, ephemeral=True, wait=True
         )
         view.bind(message)
+
+    async def _scoped_filters(
+        self,
+        user_id: int,
+        *,
+        locked_type: OpportunityType,
+        sig: str | None,
+        organization: str | None = None,
+        query: str | None = None,
+        ignore_saved: bool,
+    ) -> tuple[OpportunityFilters, str | None]:
+        """Build filters for a command that is already locked to one type.
+
+        Saved types are never applied: the command itself is the type filter.
+        Saved SIGs apply only when the member did not pass another narrowing
+        option and did not ask for ``all``.
+        """
+        explicit = OpportunityFilters(
+            opportunity_types=(locked_type,),
+            sigs=(sig,) if sig else (),
+            organization=organization,
+            query=query,
+        )
+        if sig or organization or query or ignore_saved:
+            return explicit, None
+
+        saved, _personalized = await self._personalized_filters(user_id)
+        if not saved.sigs:
+            return OpportunityFilters(opportunity_types=(locked_type,)), None
+        return (
+            OpportunityFilters(opportunity_types=(locked_type,), sigs=saved.sigs),
+            describe_interests([], list(saved.sigs)),
+        )
 
     async def _personalized_filters(self, user_id: int) -> tuple[OpportunityFilters, str | None]:
         """Turn a member's saved interests into filters, if they saved any."""
@@ -174,11 +306,35 @@ class AcmCommands(commands.Cog):
         )
 
     @staticmethod
+    def _scoped_empty_message(
+        *,
+        kind: str,
+        command: str,
+        personalized: str | None,
+        all_requested: bool,
+    ) -> str:
+        if personalized:
+            return (
+                f"Nothing published matches your ACM interests: {personalized}.\n"
+                f"Try `/acm {command} all:true` to see every published {kind}, or "
+                "`/acm subscribe` to adjust them."
+            )
+        if all_requested:
+            return f"No {kind} have been published yet."
+        return (
+            f"Nothing published matches that search. Try fewer filters, or "
+            f"`/acm {command}` with none."
+        )
+
+    @staticmethod
     def _results_embed(
-        page: Page[models.Opportunity], *, personalized: str | None
+        page: Page[models.Opportunity],
+        *,
+        personalized: str | None,
+        title_noun: str = "Opportunities",
     ) -> discord.Embed:
         embed = discord.Embed(
-            title=f"Opportunities \u2014 {page.total} match" + ("" if page.total == 1 else "es"),
+            title=f"{title_noun} \u2014 {page.total} match" + ("" if page.total == 1 else "es"),
             colour=ACM_GOLD,
             description="\n\n".join(_result_line(row) for row in page.items),
         )

@@ -28,7 +28,7 @@ from acm_hub.bot.embeds.opportunity import (
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
-from acm_hub.domain.enums import OpportunityStatus, ReviewDecision
+from acm_hub.domain.enums import OpportunityStatus, OpportunityType, ReviewDecision
 from acm_hub.observability.logging import get_logger
 
 logger = get_logger(__name__)
@@ -91,13 +91,30 @@ class OpportunityPublisher:
         *,
         opportunities_channel_id: int,
         officer_review_channel_id: int,
+        research_channel_id: int | None = None,
         source_display_names: dict[str, str] | None = None,
     ) -> None:
         self._client = client
         self._database = database
         self._opportunities_channel_id = opportunities_channel_id
         self._officer_review_channel_id = officer_review_channel_id
+        self._research_channel_id = research_channel_id
         self._source_display_names = source_display_names or {}
+
+    def _member_channel_id(self, row: models.Opportunity) -> int:
+        """Channel an approved opportunity should be posted to.
+
+        Research goes to ``RESEARCH_CHANNEL_ID`` when officers configured one.
+        Everything else, including research when that channel is unset, uses
+        the opportunities channel. Conferences share that default on purpose:
+        there is no unused conference-channel setting.
+        """
+        if (
+            row.opportunity_type is OpportunityType.RESEARCH
+            and self._research_channel_id is not None
+        ):
+            return self._research_channel_id
+        return self._opportunities_channel_id
 
     async def _resolve_channel(self, channel_id: int) -> discord.abc.Messageable:
         """Look up a channel, falling back to an API fetch when uncached.
@@ -200,8 +217,9 @@ class OpportunityPublisher:
             if row is None:
                 logger.warning("publish.missing_opportunity", opportunity_id=str(opportunity_id))
                 return None
+            channel_id = self._member_channel_id(row)
             claimed = await repository.record_publication(
-                row.id, channel_id=self._opportunities_channel_id, message_id=None
+                row.id, channel_id=channel_id, message_id=None
             )
             embed = build_opportunity_embed(row, source_display_name=self._display_name(row))
 
@@ -210,27 +228,27 @@ class OpportunityPublisher:
             return None
 
         try:
-            channel = await self._resolve_channel(self._opportunities_channel_id)
+            channel = await self._resolve_channel(channel_id)
             message = await channel.send(embed=embed)
         except (discord.HTTPException, ChannelUnavailableError):
-            await self._release_claim(row.id)
+            await self._release_claim(row.id, channel_id=channel_id)
             logger.error(
                 "publish.send_failed",
                 opportunity_id=str(row.id),
-                channel_id=self._opportunities_channel_id,
+                channel_id=channel_id,
                 exc_info=True,
             )
             raise
 
         async with self._database.session() as session:
             await OpportunityRepository(session).set_publication_message(
-                row.id, channel_id=self._opportunities_channel_id, message_id=message.id
+                row.id, channel_id=channel_id, message_id=message.id
             )
 
         logger.info(
             "publish.sent",
             opportunity_id=str(row.id),
-            channel_id=self._opportunities_channel_id,
+            channel_id=channel_id,
             message_id=message.id,
         )
         return row
@@ -379,11 +397,11 @@ class OpportunityPublisher:
             return False
         return True
 
-    async def _release_claim(self, opportunity_id: UUID) -> None:
+    async def _release_claim(self, opportunity_id: UUID, *, channel_id: int) -> None:
         """Roll the opportunity back to ``approved`` so a retry can publish it."""
         async with self._database.session() as session:
             await OpportunityRepository(session).release_publication(
                 opportunity_id,
-                channel_id=self._opportunities_channel_id,
+                channel_id=channel_id,
                 revert_status=OpportunityStatus.APPROVED,
             )

@@ -12,6 +12,8 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 
+from acm_hub.collectors.acm.conferences import AcmOfficialConferencesCollector
+from acm_hub.collectors.asu.ready_to_mentor import AsuReadyToMentorCollector
 from acm_hub.collectors.base import Collector
 from acm_hub.collectors.github.simplify import SimplifyCollector
 from acm_hub.config.settings import Settings
@@ -44,14 +46,18 @@ class AcmHubBot(commands.Bot):
         self.settings = settings
         self.database = database
 
+        timeout = settings.http_timeout_seconds
+        retries = settings.http_max_retries
         self.collectors: list[Collector] = [
             SimplifyCollector(
                 github_token=(
                     settings.github_token.get_secret_value() if settings.github_token else None
                 ),
-                timeout_seconds=settings.http_timeout_seconds,
-                max_retries=settings.http_max_retries,
-            )
+                timeout_seconds=timeout,
+                max_retries=retries,
+            ),
+            AsuReadyToMentorCollector(timeout_seconds=timeout, max_retries=retries),
+            AcmOfficialConferencesCollector(timeout_seconds=timeout, max_retries=retries),
         ]
 
         self.pipeline = OpportunityPipeline(
@@ -70,6 +76,7 @@ class AcmHubBot(commands.Bot):
             database,
             opportunities_channel_id=settings.opportunities_channel_id,
             officer_review_channel_id=settings.officer_review_channel_id,
+            research_channel_id=settings.research_channel_id,
             source_display_names={
                 collector.name: collector.display_name for collector in self.collectors
             },

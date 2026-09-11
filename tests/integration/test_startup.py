@@ -38,7 +38,11 @@ class TestBotConstruction:
 
         bot = AcmHubBot(settings, database)
         try:
-            assert [collector.name for collector in bot.collectors] == ["simplify_internships"]
+            assert [collector.name for collector in bot.collectors] == [
+                "simplify_internships",
+                "asu_ready_to_mentor",
+                "acm_official_conferences",
+            ]
             assert bot.publisher is not None
             assert bot.scheduler is not None
             assert bot.guild_object.id == settings.discord_guild_id

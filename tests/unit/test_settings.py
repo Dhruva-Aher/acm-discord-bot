@@ -105,3 +105,8 @@ def test_collection_interval_must_be_sane(monkeypatch: pytest.MonkeyPatch) -> No
 def test_optional_officer_role_is_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
     settings = build({**VALID_ENV, "OFFICER_ROLE_ID": "999888777666555444"}, monkeypatch)
     assert settings.officer_role_id == 999888777666555444
+
+
+def test_optional_research_channel_is_parsed(monkeypatch: pytest.MonkeyPatch) -> None:
+    settings = build({**VALID_ENV, "RESEARCH_CHANNEL_ID": "423456789012345678"}, monkeypatch)
+    assert settings.research_channel_id == 423456789012345678

@@ -11,11 +11,19 @@ none of that. It requests no moderation permissions and no privileged intents.
 
 ## What it does
 
-Right now (Milestones 1–5):
+Right now (Milestones 1–7):
 
 - Collects open internship listings from the
   [SimplifyJobs / Pitt CSC](https://github.com/SimplifyJobs/Summer2027-Internships)
   community list.
+- Collects ASU faculty who are **explicitly labelled Ready to mentor** on the
+  official [Fulton Forge mentors page](https://forge.engineering.asu.edu/mentors/).
+  Expo-only mentors, lab pages, grants and publication records are not treated
+  as recruiting evidence.
+- Collects upcoming conferences from ACM's official
+  [conferences page](https://www.acm.org/conferences) when that page is
+  reachable. `robots.txt` forbids `/calendar`; Cloudflare blocks are reported
+  as a failed source, never bypassed, and never replaced with a made-up list.
 - Normalizes them into one canonical model, deduplicates them across collection
   runs and across sources, and detects when a posting has actually changed.
 - Classifies each opportunity into ACM Special Interest Groups with a
@@ -29,11 +37,9 @@ Right now (Milestones 1–5):
   channel** with Approve / Reject / Open Source buttons, unless an officer has
   explicitly set that source to auto-publish. Nothing reaches members until
   then.
-- Lets members browse with `/acm opportunities`, save interests with
-  `/acm subscribe`, and page through results that only they can control.
-
-Planned, not yet built: the ASU research radar and ACM global conference
-tracking. See [Roadmap](#roadmap).
+- Lets members browse with `/acm opportunities`, `/acm research` and
+  `/acm conferences`, save interests with `/acm subscribe`, and page through
+  results that only they can control.
 
 ### A rule worth stating up front
 
@@ -52,7 +58,9 @@ collector cannot post to Discord, and the pipeline cannot decide a channel.
                         │
         ┌───────────────┴───────────────┐
         │           COLLECTORS          │   fetch + source-specific parsing only
-        │  collectors/github/simplify   │   never touches Discord or the database
+        │  github/simplify              │   never touches Discord or the database
+        │  asu/ready_to_mentor          │
+        │  acm/conferences              │
         └───────────────┬───────────────┘
                         │  RawOpportunity[]
         ┌───────────────▼───────────────┐
@@ -240,7 +248,7 @@ Optional:
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OFFICER_ROLE_ID` | unset | Role allowed to use `/acm-admin`. Falls back to Manage Server |
-| `RESEARCH_CHANNEL_ID` | unset | Reserved for the research radar (Milestone 6) |
+| `RESEARCH_CHANNEL_ID` | unset | If set, approved research posts here instead of the opportunities channel |
 | `GITHUB_TOKEN` | unset | A no-scope token raises the anonymous rate limit |
 | `LOG_LEVEL` | `INFO` | Standard Python level name |
 | `LOG_FORMAT` | `console` | `console` for humans, `text` for JSON lines |
@@ -301,6 +309,8 @@ Member commands:
 | --- | --- |
 | `/acm status` | What ACM Hub is tracking and when each source last ran |
 | `/acm opportunities` | Browse published opportunities. Filters and paging are SQL. Saved interests apply when you pass no filters; `all:true` ignores them |
+| `/acm research` | Browse published Ready-to-mentor faculty only. Saved SIGs apply; saved types do not |
+| `/acm conferences` | Browse published official ACM conferences only |
 | `/acm subscribe` | Save type and SIG interests. ACM Hub never sends DMs |
 
 Officer commands (hidden from members, and re-checked at runtime):
@@ -501,13 +511,20 @@ officer role, or grant Manage Server.
 | 4 | Officer review, approve/reject, publishing, idempotency | Done |
 | 4.5 | Baseline import, closure detection, source trust policy, review-queue ops | Done |
 | 5 | `/acm opportunities`, subscriptions, filtering and search | Done |
-| 6 | ASU Ready-to-Mentor and FURI research radar, `/acm research` | Not started |
-| 7 | One official ACM source: conferences, programs, deadlines | Planned |
+| 6 | ASU Ready-to-Mentor research radar, `/acm research` | Done |
+| 7 | Official ACM conferences page, `/acm conferences` | Done |
 | 8 | Remaining production ops (multi-instance, alerting) | Partial |
 
-The research radar will only label a professor as recruiting when an
-authoritative ASU source explicitly says so — publication records, grants and
-lab pages are not evidence of mentorship availability.
+The research radar only labels a professor as recruiting when the official
+Fulton Forge **Ready to mentor** section says so. Publication records, grants,
+lab pages and the **Mentors from the current expo** list are not evidence of
+mentorship availability.
+
+ACM conference ingestion uses only `https://www.acm.org/conferences` (allowed
+by robots.txt). It does not scrape `/calendar`. If Cloudflare blocks the fetch,
+the source fails in `/acm-admin sync` and `/acm status` — ACM Hub will not
+ship a hardcoded conference catalogue. Conference dates are event dates, not
+invented CFP deadlines.
 
 ## License
 

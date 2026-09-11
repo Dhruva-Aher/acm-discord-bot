@@ -21,7 +21,7 @@ import pytest
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
-from acm_hub.domain.enums import OpportunityStatus, ReviewDecision
+from acm_hub.domain.enums import OpportunityStatus, OpportunityType, ReviewDecision
 from acm_hub.pipeline.classify import classify_opportunity
 from acm_hub.pipeline.normalize import normalize_opportunity
 from acm_hub.pipeline.process import OpportunityPipeline
@@ -31,6 +31,7 @@ from tests.integration.test_pipeline import StubCollector
 
 OPPORTUNITIES_CHANNEL_ID = 111111111111111111
 REVIEW_CHANNEL_ID = 222222222222222222
+RESEARCH_CHANNEL_ID = 333333333333333333
 OFFICER_ONE = 555555555555555555
 OFFICER_TWO = 666666666666666666
 
@@ -452,3 +453,50 @@ class TestClosedMessageEditing:
             )
 
         assert await publisher.mark_published_messages_closed([row.id]) == 0
+
+
+class TestResearchChannelRouting:
+    async def test_research_posts_to_the_research_channel_when_configured(
+        self, database: Database
+    ) -> None:
+        channels = {
+            OPPORTUNITIES_CHANNEL_ID: fake_channel(OPPORTUNITIES_CHANNEL_ID),
+            REVIEW_CHANNEL_ID: fake_channel(REVIEW_CHANNEL_ID),
+            RESEARCH_CHANNEL_ID: fake_channel(RESEARCH_CHANNEL_ID),
+        }
+        publisher = OpportunityPublisher(
+            fake_client(channels),
+            database,
+            opportunities_channel_id=OPPORTUNITIES_CHANNEL_ID,
+            officer_review_channel_id=REVIEW_CHANNEL_ID,
+            research_channel_id=RESEARCH_CHANNEL_ID,
+        )
+        row = await seed(
+            database,
+            title="Ready to mentor: Test Faculty",
+            organization="Test Faculty",
+            opportunity_type=OpportunityType.RESEARCH,
+            application_url="https://forge.engineering.asu.edu/faculty_mentor/test/",
+        )
+
+        published = await publisher.publish_approved(row.id)
+
+        assert published is not None
+        assert channels[RESEARCH_CHANNEL_ID].send.await_count == 1
+        assert channels[OPPORTUNITIES_CHANNEL_ID].send.await_count == 0
+
+    async def test_research_falls_back_to_opportunities_without_a_research_channel(
+        self, database: Database, publisher: OpportunityPublisher, channels: dict[int, MagicMock]
+    ) -> None:
+        row = await seed(
+            database,
+            title="Ready to mentor: Test Faculty",
+            organization="Test Faculty",
+            opportunity_type=OpportunityType.RESEARCH,
+            application_url="https://forge.engineering.asu.edu/faculty_mentor/test-2/",
+        )
+
+        published = await publisher.publish_approved(row.id)
+
+        assert published is not None
+        assert channels[OPPORTUNITIES_CHANNEL_ID].send.await_count == 1

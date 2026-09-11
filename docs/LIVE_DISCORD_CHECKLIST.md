@@ -25,8 +25,9 @@ throwaway.
 ## The 18 checks
 
 1. **Commands appear.** In the guild, `/acm` offers `status`, `opportunities`,
-   `subscribe`. `/acm-admin` is hidden from a member account and visible to an
-   officer. There is no `!opportunities` prefix command.
+   `research`, `conferences`, `subscribe`. `/acm-admin` is hidden from a member
+   account and visible to an officer. There is no `!opportunities` prefix
+   command.
 2. **Non-officers are blocked.** A member running any `/acm-admin` command gets
    an ephemeral "limited to ACM officers" reply. Nothing is posted publicly.
 3. **Health is safe to screenshot.** `/acm-admin health` shows database ok,
@@ -69,7 +70,9 @@ throwaway.
     entire backlog.
 13. **Members can browse.** `/acm opportunities all:true` is ephemeral, lists
     published postings with source-stated facts only, and does not show
-    pending, rejected or closed rows as open.
+    pending, rejected or closed rows as open. `/acm research` lists only
+    research; `/acm conferences` lists only conferences. An internship must
+    not appear in either.
 14. **Only the requesting member can page.** Run `/acm opportunities` so a
     Next button appears (seed enough published rows). A second account that
     can see the ephemeral message — or you, from another user — cannot page
