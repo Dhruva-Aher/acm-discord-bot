@@ -1,7 +1,7 @@
 """Member-facing ``/acm`` commands.
 
-Six commands ship here: ``status``, ``opportunities``, ``research``,
-``conferences``, ``digest`` and ``subscribe``.
+Commands: ``status``, ``opportunities``, ``research``, ``conferences``,
+``digest``, ``resume-check``, ``company-prep`` and ``subscribe``.
 
 Two properties are enforced throughout.
 
@@ -16,12 +16,14 @@ from __future__ import annotations
 
 from io import BytesIO
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
-from acm_hub.bot.embeds.opportunity import format_locations, truncate
+from acm_hub.bot.embeds.opportunity import ACM_GOLD, format_locations, truncate
+from acm_hub.bot.member_actions import company_prep_embed
 from acm_hub.bot.subscriptions import SubscriptionView, describe_interests
 from acm_hub.bot.views import Page, PaginatedView
 from acm_hub.config.sigs import SIG_NAMES
@@ -33,6 +35,8 @@ from acm_hub.db.repositories.subscriptions import SubscriptionRepository
 from acm_hub.digest.html import DEFAULT_DIGEST_LIMIT, build_opportunities_html
 from acm_hub.domain.enums import OpportunityStatus, OpportunityType
 from acm_hub.observability.logging import get_logger
+from acm_hub.prep.company import build_company_prep
+from acm_hub.prep.resume import analyse_resume_against_listing, extract_pdf_text
 
 if TYPE_CHECKING:
     from acm_hub.bot.client import AcmHubBot
@@ -40,7 +44,6 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 RESULTS_PER_PAGE = 5
-ACM_GOLD = discord.Colour(0xFFC627)
 
 SIG_CHOICES = [app_commands.Choice(name=sig, value=sig) for sig in SIG_NAMES[:25]]
 TYPE_CHOICES = [
@@ -444,6 +447,194 @@ class AcmCommands(commands.Cog):
         )
 
         await interaction.followup.send(summary, file=file, ephemeral=True)
+
+    # ----------------------------------------------------------- resume / prep
+
+    @acm.command(
+        name="resume-check",
+        description="Upload a PDF resume and compare it to a published listing's themes",
+    )
+    @app_commands.describe(
+        resume="Your resume as a PDF (text PDF, not a scanned image)",
+        opportunity_id="UUID from the Resume check button or opportunity card",
+    )
+    async def resume_check(
+        self,
+        interaction: discord.Interaction,
+        resume: discord.Attachment,
+        opportunity_id: str,
+    ) -> None:
+        """Keyword-scan a PDF against listing themes — not an AI interview prediction."""
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        try:
+            oid = UUID(opportunity_id.strip())
+        except ValueError:
+            await interaction.followup.send(
+                "That opportunity id is not a valid UUID. Use the id from the "
+                "**Resume check** button on a published posting.",
+                ephemeral=True,
+            )
+            return
+
+        if not (resume.filename or "").lower().endswith(".pdf"):
+            await interaction.followup.send("Please attach a `.pdf` file.", ephemeral=True)
+            return
+        if resume.size is not None and resume.size > 5 * 1024 * 1024:
+            await interaction.followup.send("PDF must be under 5 MB.", ephemeral=True)
+            return
+
+        async with self.bot.database.session() as session:
+            row = await OpportunityRepository(session).get(oid)
+        if row is None or row.status is not OpportunityStatus.PUBLISHED:
+            await interaction.followup.send(
+                "No published opportunity matches that id.", ephemeral=True
+            )
+            return
+
+        try:
+            data = await resume.read()
+            text, pages = extract_pdf_text(data)
+        except ValueError as exc:
+            await interaction.followup.send(str(exc), ephemeral=True)
+            return
+
+        report = analyse_resume_against_listing(text, row, page_count=pages)
+        embed = discord.Embed(
+            title="Resume check result",
+            colour=ACM_GOLD,
+            description=(
+                f"**{truncate(row.title, 120)}** at **{truncate(row.organization, 80)}**\n"
+                f"Pages read: {report.page_count} · Characters: {report.resume_chars}"
+            ),
+        )
+        if report.themes_found:
+            embed.add_field(
+                name="Themes found in your resume",
+                value=" · ".join(f"`{t}`" for t in report.themes_found) or "—",
+                inline=False,
+            )
+        if report.themes_missing:
+            embed.add_field(
+                name="Themes not found in resume text",
+                value=" · ".join(f"`{t}`" for t in report.themes_missing) or "—",
+                inline=False,
+            )
+        elif report.themes_checked:
+            embed.add_field(
+                name="Themes not found in resume text",
+                value="None of the checked themes were missing.",
+                inline=False,
+            )
+        embed.add_field(
+            name="Notes",
+            value="\n".join(report.notes),
+            inline=False,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        channel_id = self.bot.settings.resume_review_channel_id
+        if channel_id is None:
+            return
+        try:
+            channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+            if isinstance(channel, discord.abc.Messageable):
+                public = discord.Embed(
+                    title="Resume check shared",
+                    colour=ACM_GOLD,
+                    description=(
+                        f"{interaction.user.mention} checked a resume against "
+                        f"**{truncate(row.organization, 60)}** / {truncate(row.title, 80)}"
+                    ),
+                )
+                if report.themes_missing:
+                    public.add_field(
+                        name="Themes not found",
+                        value=" · ".join(f"`{t}`" for t in report.themes_missing[:8]),
+                        inline=False,
+                    )
+                await channel.send(embed=public)
+        except discord.HTTPException as exc:
+            logger.warning(
+                "resume_check.share_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
+
+    @acm.command(
+        name="company-prep",
+        description="LeetCode / OA search links and listing practice themes for a company",
+    )
+    @app_commands.describe(
+        opportunity_id="UUID of a published opportunity (preferred)",
+        organization="Company name if you do not have an opportunity id",
+    )
+    async def company_prep(
+        self,
+        interaction: discord.Interaction,
+        opportunity_id: str | None = None,
+        organization: str | None = None,
+    ) -> None:
+        """Company prep links — community sources only, no invented question lists."""
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        row: models.Opportunity | None = None
+        if opportunity_id:
+            try:
+                oid = UUID(opportunity_id.strip())
+            except ValueError:
+                await interaction.followup.send(
+                    "That opportunity id is not a valid UUID.", ephemeral=True
+                )
+                return
+            async with self.bot.database.session() as session:
+                row = await OpportunityRepository(session).get(oid)
+            if row is None or row.status is not OpportunityStatus.PUBLISHED:
+                await interaction.followup.send(
+                    "No published opportunity matches that id.", ephemeral=True
+                )
+                return
+        elif organization and organization.strip():
+            filters = OpportunityFilters(organization=organization.strip())
+            async with self.bot.database.session() as session:
+                matches = await OpportunityRepository(session).search_published(
+                    filters, limit=1, offset=0
+                )
+            if not matches:
+                await interaction.followup.send(
+                    "No published opportunity matched that organization. "
+                    "Publish one first, or pass an opportunity id from a posting.",
+                    ephemeral=True,
+                )
+                return
+            row = matches[0]
+        else:
+            await interaction.followup.send(
+                "Pass `opportunity_id` from a posting, or an `organization` name.",
+                ephemeral=True,
+            )
+            return
+
+        embed = company_prep_embed(row)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+        channel_id = self.bot.settings.company_prep_channel_id
+        if channel_id is None:
+            return
+        try:
+            channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
+            if isinstance(channel, discord.abc.Messageable):
+                prep = build_company_prep(row)
+                await channel.send(
+                    content=(
+                        f"{interaction.user.mention} · company prep for **{prep.company}**"
+                    ),
+                    embed=embed,
+                )
+        except discord.HTTPException as exc:
+            logger.warning(
+                "company_prep.share_failed",
+                error=f"{type(exc).__name__}: {exc}",
+            )
 
     # ------------------------------------------------------------ preferences
 

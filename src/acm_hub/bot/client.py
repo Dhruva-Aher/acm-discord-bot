@@ -120,7 +120,9 @@ class AcmHubBot(commands.Bot):
         """
         # Registered before any interaction arrives so review cards posted by a
         # previous process keep working after a restart.
-        self.add_dynamic_items(ApproveButton, RejectButton)
+        from acm_hub.bot.member_actions import CompanyPrepButton, ResumeCheckButton
+
+        self.add_dynamic_items(ApproveButton, RejectButton, ResumeCheckButton, CompanyPrepButton)
 
         from acm_hub.bot.commands.acm import AcmCommands
         from acm_hub.bot.commands.admin import AdminCommands

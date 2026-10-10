@@ -25,7 +25,7 @@ from acm_hub.bot.embeds.opportunity import (
     build_review_embed,
     mark_embed_closed,
 )
-from acm_hub.bot.insights import build_member_action_view
+from acm_hub.bot.member_actions import build_member_action_view
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database

@@ -72,6 +72,8 @@ class TestCommandRegistration:
             "acm research",
             "acm conferences",
             "acm digest",
+            "acm resume-check",
+            "acm company-prep",
             "acm subscribe",
         }
 

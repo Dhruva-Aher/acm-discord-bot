@@ -259,6 +259,8 @@ Optional:
 | --- | --- | --- |
 | `OFFICER_ROLE_ID` | unset | Role allowed to use `/acm-admin`. Falls back to Manage Server |
 | `RESEARCH_CHANNEL_ID` | unset | If set, approved research posts here instead of the opportunities channel |
+| `RESUME_REVIEW_CHANNEL_ID` | unset | Optional channel where Resume check prompts / shared results are posted |
+| `COMPANY_PREP_CHANNEL_ID` | unset | Optional channel for company LeetCode / OA prep cards |
 | `GITHUB_TOKEN` | unset | A no-scope token raises GitHub rate limits for the internship feed |
 | `INTERNSHIP_GITHUB_FEEDS` | Summer 2027 + new grad | Semicolon-separated ``owner/repo@branch\|label`` entries |
 | `INTERNSHIP_GITHUB_DISCOVER_ORGS` | `SimplifyJobs` | Comma-separated orgs to scan for extra CS listing repos |
@@ -326,6 +328,8 @@ Member commands:
 | `/acm research` | Browse published Ready-to-mentor faculty only. Saved SIGs apply; saved types do not |
 | `/acm conferences` | Browse published official ACM conferences only |
 | `/acm digest` | Download an HTML digest of published opportunities. Same filters and saved-interest behaviour as `/acm opportunities`; only published rows; capped at 200 |
+| `/acm resume-check` | Attach a PDF resume + published opportunity UUID. Keyword-scans listing themes (SIGs / tags) — not an AI JD review |
+| `/acm company-prep` | LeetCode company tag + Reddit OA/interview searches + listing practice themes. No invented “most asked” lists |
 | `/acm subscribe` | Save type and SIG interests. ACM Hub never sends DMs |
 
 Officer commands (hidden from members, and re-checked at runtime):

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     opportunities_channel_id: int
     officer_review_channel_id: int
     research_channel_id: int | None = None
+    resume_review_channel_id: int | None = None
+    company_prep_channel_id: int | None = None
     officer_role_id: int | None = None
 
     database_url: str

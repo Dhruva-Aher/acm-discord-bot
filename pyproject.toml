@@ -16,6 +16,7 @@ dependencies = [
     "pydantic>=2.7,<3",
     "pydantic-settings>=2.3,<3",
     "structlog>=24.1,<26",
+    "pypdf>=6.20.0",
 ]
 
 [project.optional-dependencies]

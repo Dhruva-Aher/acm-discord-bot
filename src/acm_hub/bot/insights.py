@@ -17,8 +17,6 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from urllib.parse import quote_plus
 
-import discord
-
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import sig_matches_from_json
 from acm_hub.domain.enums import OpportunityType
@@ -174,23 +172,3 @@ def insights_embed_field_value(insights: OpportunityInsights) -> str:
         return text[:1023] + "…"
     return text
 
-
-def build_member_action_view(row: models.Opportunity) -> discord.ui.View:
-    """Apply + research link buttons under a published opportunity."""
-    view: discord.ui.View = discord.ui.View(timeout=None)
-    view.add_item(
-        discord.ui.Button(
-            label="Apply",
-            style=discord.ButtonStyle.link,
-            url=row.application_url,
-        )
-    )
-    insights = build_insights(row)
-    for link in insights.research_links[:3]:
-        label = link.label
-        if len(label) > MAX_LINK_LABEL:
-            label = label[: MAX_LINK_LABEL - 1] + "…"
-        view.add_item(
-            discord.ui.Button(label=label, style=discord.ButtonStyle.link, url=link.url)
-        )
-    return view

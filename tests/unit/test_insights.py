@@ -4,12 +4,8 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from acm_hub.bot.insights import (
-    build_insights,
-    build_member_action_view,
-    focus_tags_for,
-    research_links_for,
-)
+from acm_hub.bot.insights import build_insights, focus_tags_for, research_links_for
+from acm_hub.bot.member_actions import build_member_action_view
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import sig_matches_to_json
 from acm_hub.domain.enums import OpportunityStatus
@@ -88,7 +84,19 @@ class TestMemberActionView:
     def test_apply_button_points_at_application_url(self) -> None:
         row = build_row(application_url="https://example.test/apply/42")
         view = build_member_action_view(row)
-        labels = [getattr(item, "label", None) for item in view.children]
+        labels = []
+        for item in view.children:
+            label = getattr(item, "label", None)
+            if label is None and hasattr(item, "item"):
+                label = getattr(item.item, "label", None)
+            labels.append(label)
         assert "Apply" in labels
-        apply = next(item for item in view.children if getattr(item, "label", None) == "Apply")
+        assert "Resume check" in labels
+        assert "Company prep" in labels
+        apply = next(
+            item
+            for item in view.children
+            if getattr(item, "label", None) == "Apply"
+            or getattr(getattr(item, "item", None), "label", None) == "Apply"
+        )
         assert apply.url == "https://example.test/apply/42"

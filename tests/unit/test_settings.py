@@ -30,6 +30,8 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "GITHUB_TOKEN",
         "INTERNSHIP_GITHUB_FEEDS",
         "INTERNSHIP_GITHUB_DISCOVER_ORGS",
+        "RESUME_REVIEW_CHANNEL_ID",
+        "COMPANY_PREP_CHANNEL_ID",
         "ACM_CONFERENCES_ENABLED",
         "ACM_CONFERENCES_URL",
         "LOG_LEVEL",
