@@ -23,7 +23,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from acm_hub.bot.embeds.opportunity import ACM_GOLD, format_locations, truncate
-from acm_hub.bot.member_actions import company_prep_embed
+from acm_hub.bot.member_actions import build_company_prep_view, company_prep_embed
 from acm_hub.bot.subscriptions import SubscriptionView, describe_interests
 from acm_hub.bot.views import Page, PaginatedView
 from acm_hub.config.sigs import SIG_NAMES
@@ -622,8 +622,10 @@ class AcmCommands(commands.Cog):
             )
             return
 
+        prep = build_company_prep(row)
         embed = company_prep_embed(row)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        view = build_company_prep_view(prep)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         channel_id = self.bot.settings.company_prep_channel_id
         if channel_id is None:
@@ -631,12 +633,12 @@ class AcmCommands(commands.Cog):
         try:
             channel = self.bot.get_channel(channel_id) or await self.bot.fetch_channel(channel_id)
             if isinstance(channel, discord.abc.Messageable):
-                prep = build_company_prep(row)
                 await channel.send(
                     content=(
                         f"{interaction.user.mention} · company prep for **{prep.company}**"
                     ),
                     embed=embed,
+                    view=view,
                 )
         except discord.HTTPException as exc:
             logger.warning(

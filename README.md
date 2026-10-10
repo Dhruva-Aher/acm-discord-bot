@@ -328,7 +328,7 @@ Member commands:
 | `/acm conferences` | Browse published official ACM conferences only |
 | `/acm digest` | Download an HTML digest of published opportunities. Same filters and saved-interest behaviour as `/acm opportunities`; only published rows; capped at 200 |
 | `/acm resume-check` | Attach a PDF resume + published opportunity UUID. Keyword-scans listing themes (SIGs / tags) — not an AI JD review |
-| `/acm company-prep` | LeetCode company tag + Reddit OA/interview searches + listing practice themes. No invented “most asked” lists |
+| `/acm company-prep` | Prep card with Practice + From candidates links, one-tap buttons for LeetCode / Reddit / Levels.fyi. No invented “most asked” lists |
 | `/acm subscribe` | Save type and SIG interests. ACM Hub never sends DMs |
 
 Officer commands (hidden from members, and re-checked at runtime):

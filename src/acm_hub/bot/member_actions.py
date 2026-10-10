@@ -19,7 +19,12 @@ from acm_hub.bot.report import ReportLinkButton
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.observability.logging import get_logger
-from acm_hub.prep.company import build_company_prep
+from acm_hub.prep.company import (
+    CompanyPrep,
+    build_company_prep,
+    format_prep_section,
+    links_for_section,
+)
 
 if TYPE_CHECKING:
     from acm_hub.bot.client import AcmHubBot
@@ -29,6 +34,7 @@ logger = get_logger(__name__)
 RESUME_PREFIX = "acmhub:member:resume:"
 PREP_PREFIX = "acmhub:member:prep:"
 _UUID_PATTERN = r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
+_MAX_PREP_BUTTONS = 4
 
 
 def _bot(interaction: discord.Interaction) -> AcmHubBot:
@@ -48,25 +54,55 @@ async def _load_opportunity(
 
 
 def company_prep_embed(row: models.Opportunity) -> discord.Embed:
+    """Member-facing prep card: themes first, then inviting practice links."""
     prep = build_company_prep(row)
     embed = discord.Embed(
-        title=truncate(f"Company prep · {prep.company}", 250),
+        title=truncate(f"Prep for {prep.company}", 250),
         colour=ACM_GOLD,
-        description=truncate(row.title, 200),
+        description=(
+            f"**{truncate(row.title, 160)}**\n"
+            "Pick a path below — LeetCode for drills, Reddit for recent process notes."
+        ),
     )
     if prep.practice_themes:
         embed.add_field(
-            name="Practice themes from this listing",
+            name="Themes from this listing",
             value=" · ".join(f"`{tag}`" for tag in prep.practice_themes),
             inline=False,
         )
-    embed.add_field(
-        name="Links",
-        value="\n".join(f"[{link.label}]({link.url})" for link in prep.links),
-        inline=False,
-    )
+
+    practice = links_for_section(prep, "Practice")
+    if practice:
+        embed.add_field(
+            name="Practice",
+            value=format_prep_section(practice),
+            inline=False,
+        )
+
+    stories = links_for_section(prep, "From candidates")
+    if stories:
+        embed.add_field(
+            name="From candidates",
+            value=format_prep_section(stories),
+            inline=False,
+        )
+
     embed.set_footer(text=prep.disclaimer)
     return embed
+
+
+def build_company_prep_view(prep: CompanyPrep) -> discord.ui.View:
+    """Link buttons so LeetCode / Reddit open in one tap."""
+    view: discord.ui.View = discord.ui.View(timeout=None)
+    for link in prep.links[:_MAX_PREP_BUTTONS]:
+        view.add_item(
+            discord.ui.Button(
+                label=truncate(link.label, 80),
+                style=discord.ButtonStyle.link,
+                url=link.url,
+            )
+        )
+    return view
 
 
 def resume_prompt_embed(row: models.Opportunity, *, opportunity_id: UUID) -> discord.Embed:
@@ -187,8 +223,10 @@ class CompanyPrepButton(
             )
             return
 
+        prep = build_company_prep(row)
         embed = company_prep_embed(row)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        view = build_company_prep_view(prep)
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
         bot = _bot(interaction)
         channel_id = bot.settings.company_prep_channel_id
@@ -204,6 +242,7 @@ class CompanyPrepButton(
                     f"**{truncate(row.organization, 80)}**."
                 ),
                 embed=embed,
+                view=view,
             )
         except discord.HTTPException as exc:
             logger.warning(
