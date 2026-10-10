@@ -75,12 +75,12 @@ class TestOpportunityEmbed:
         embed = build_opportunity_embed(build_row(), now=FROZEN_NOW)
         assert embed.title == "Software Engineering Intern"
         assert embed.url == "https://boards.example.com/jobs/123"
-        assert field_value(embed, "Organization") == "Cloudflare"
+        assert field_value(embed, "Company") == "Cloudflare"
 
     def test_unknown_sponsorship_is_shown_as_unknown(self) -> None:
         """Silence must never render as eligibility."""
         embed = build_opportunity_embed(build_row(), now=FROZEN_NOW)
-        assert field_value(embed, "Eligibility") == "Sponsorship: Unknown"
+        assert "**Sponsorship** · Unknown" in field_value(embed, "Eligibility")
 
     @pytest.mark.parametrize(
         ("status", "expected"),
@@ -101,17 +101,25 @@ class TestOpportunityEmbed:
         names = {str(field.name).lower() for field in embed.fields}
         assert not names & {"salary", "compensation", "pay", "deadline", "requirements"}
 
-    def test_stand_out_panel_uses_searches_not_invented_hires(self) -> None:
+    def test_research_and_focus_are_separate_clean_fields(self) -> None:
         embed = build_opportunity_embed(
             build_row(organization="Microsoft", title="Software Engineering Intern"),
             now=FROZEN_NOW,
         )
-        value = field_value(embed, "Stand out")
-        assert "Opened today" in value
-        assert "Reddit" in value
-        assert "ASU" in value
-        assert "previous hire" not in value.lower()
-        assert "job description dump" in value.lower() or "listing themes" in value.lower()
+        assert embed.author is not None
+        assert embed.author.name is not None
+        assert "Opened today" in embed.author.name
+        assert "Internship" in embed.author.name
+        research = field_value(embed, "Research")
+        assert "Interviews" in research
+        assert "Recruiters" in research
+        assert "ASU alumni" in research
+        assert "previous hire" not in research.lower()
+        names = {str(field.name) for field in embed.fields}
+        assert "Stand out" not in names
+        assert embed.footer is not None
+        assert embed.footer.text is not None
+        assert "searches" in embed.footer.text.lower()
 
     def test_absent_description_leaves_the_body_empty(self) -> None:
         assert build_opportunity_embed(build_row(), now=FROZEN_NOW).description is None
@@ -123,13 +131,15 @@ class TestOpportunityEmbed:
 
     def test_matched_sigs_are_listed(self) -> None:
         embed = build_opportunity_embed(build_row(title="Machine Learning Intern"), now=FROZEN_NOW)
-        assert "SIGAI" in field_value(embed, "Relevant SIGs")
+        assert "SIGAI" in field_value(embed, "SIGs")
 
-    def test_no_sig_match_says_so_explicitly(self) -> None:
+    def test_no_sig_match_omits_the_sigs_field(self) -> None:
         embed = build_opportunity_embed(
             build_row(title="Marketing Communications Intern"), now=FROZEN_NOW
         )
-        assert field_value(embed, "Relevant SIGs") == "None matched"
+        names = {str(field.name) for field in embed.fields}
+        assert "SIGs" not in names
+        assert "Relevant SIGs" not in names
 
     def test_the_source_is_attributed_in_the_footer(self) -> None:
         embed = build_opportunity_embed(
@@ -231,7 +241,9 @@ def test_unreadable_sig_json_degrades_gracefully() -> None:
     row = build_row()
     row.sig_matches = [{"unexpected": "shape"}]
     embed = build_opportunity_embed(row, now=datetime.now(tz=UTC))
-    assert field_value(embed, "Relevant SIGs") == "None matched"
+    names = {str(field.name) for field in embed.fields}
+    assert "SIGs" not in names
+    assert embed.title == "Software Engineering Intern"
 
 
 class TestClosedEmbed:

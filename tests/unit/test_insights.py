@@ -59,8 +59,8 @@ class TestResearchLinks:
         row = build_row(organization="Microsoft", title="Research Intern - BCI")
         links = research_links_for(row)
         labels = [link.label for link in links]
-        assert any("Reddit" in label for label in labels)
-        assert any("Recruiter" in label for label in labels)
+        assert any(label == "Interviews" for label in labels)
+        assert any(label == "Recruiters" for label in labels)
         assert any("ASU" in label for label in labels)
         assert all("Microsoft" in link.url for link in links)
         assert all("linkedin.com" in link.url or "reddit.com" in link.url for link in links)
@@ -94,6 +94,7 @@ class TestMemberActionView:
         assert "Resume check" in labels
         assert "Company prep" in labels
         assert "Report link" in labels
+        assert len(view.children) == 4
         apply = next(
             item
             for item in view.children

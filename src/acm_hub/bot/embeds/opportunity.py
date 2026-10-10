@@ -13,7 +13,11 @@ from datetime import UTC, datetime
 
 import discord
 
-from acm_hub.bot.insights import build_insights, insights_embed_field_value
+from acm_hub.bot.insights import (
+    build_insights,
+    focus_field_value,
+    research_field_value,
+)
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import sig_matches_from_json
 from acm_hub.domain.enums import (
@@ -27,14 +31,14 @@ MAX_DESCRIPTION_LENGTH = 400
 MAX_LOCATIONS_SHOWN = 4
 
 TYPE_HEADINGS: dict[OpportunityType, str] = {
-    OpportunityType.INTERNSHIP: "New Internship",
-    OpportunityType.RESEARCH: "New Research Opportunity",
-    OpportunityType.FELLOWSHIP: "New Fellowship",
-    OpportunityType.HACKATHON: "New Hackathon",
-    OpportunityType.SCHOLARSHIP: "New Scholarship",
-    OpportunityType.CONFERENCE: "New Conference",
-    OpportunityType.PROGRAM: "New Program",
-    OpportunityType.OTHER: "New Opportunity",
+    OpportunityType.INTERNSHIP: "Internship",
+    OpportunityType.RESEARCH: "Research",
+    OpportunityType.FELLOWSHIP: "Fellowship",
+    OpportunityType.HACKATHON: "Hackathon",
+    OpportunityType.SCHOLARSHIP: "Scholarship",
+    OpportunityType.CONFERENCE: "Conference",
+    OpportunityType.PROGRAM: "New grad",
+    OpportunityType.OTHER: "Opportunity",
 }
 
 REMOTE_LABELS: dict[RemoteStatus, str] = {
@@ -88,19 +92,19 @@ def truncate(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip() + "\u2026"
 
 
-def _sig_field_value(row: models.Opportunity) -> str:
+def _sig_field_value(row: models.Opportunity) -> str | None:
     matches = sig_matches_from_json(row.sig_matches)
     if not matches:
-        return "None matched"
-    return " \u00b7 ".join(match.sig for match in matches)
+        return None
+    return " · ".join(match.sig for match in matches)
 
 
 def _eligibility_field_value(row: models.Opportunity) -> str:
-    lines = [f"Sponsorship: {SPONSORSHIP_LABELS[row.sponsorship]}"]
+    lines = [f"**Sponsorship** · {SPONSORSHIP_LABELS[row.sponsorship]}"]
     if row.citizenship_requirement:
-        lines.append(f"Citizenship: {row.citizenship_requirement}")
+        lines.append(f"**Citizenship** · {row.citizenship_requirement}")
     if row.degree_requirements:
-        lines.append(f"Degrees: {', '.join(row.degree_requirements)}")
+        lines.append(f"**Degrees** · {', '.join(row.degree_requirements)}")
     return "\n".join(lines)
 
 
@@ -126,6 +130,10 @@ def build_opportunity_embed(
 ) -> discord.Embed:
     """Build the member-facing embed for a published opportunity."""
     heading = TYPE_HEADINGS.get(row.opportunity_type, TYPE_HEADINGS[OpportunityType.OTHER])
+    insights = build_insights(row, now=now)
+    if insights.freshness:
+        heading = f"{heading} · Opened today"
+
     embed = discord.Embed(
         title=truncate(row.title, 250),
         url=row.application_url,
@@ -133,29 +141,35 @@ def build_opportunity_embed(
         description=truncate(row.description, MAX_DESCRIPTION_LENGTH) if row.description else None,
     )
     embed.set_author(name=heading)
-    embed.add_field(name="Organization", value=truncate(row.organization, 200), inline=True)
+
+    embed.add_field(name="Company", value=truncate(row.organization, 200), inline=True)
     embed.add_field(
         name="Location",
         value=format_locations(list(row.locations), row.remote_status),
         inline=True,
     )
-    embed.add_field(name="Relevant SIGs", value=_sig_field_value(row), inline=True)
+    sigs = _sig_field_value(row)
+    if sigs:
+        embed.add_field(name="SIGs", value=sigs, inline=True)
+    else:
+        # Keep a third inline slot so Company / Location stay on one row.
+        embed.add_field(name="\u200b", value="\u200b", inline=True)
+
     embed.add_field(name="Eligibility", value=_eligibility_field_value(row), inline=False)
 
-    insights = build_insights(row, now=now)
-    if insights.has_panel:
-        embed.add_field(
-            name="Stand out",
-            value=insights_embed_field_value(insights),
-            inline=False,
-        )
+    focus = focus_field_value(insights)
+    if focus:
+        embed.add_field(name="Focus", value=focus, inline=False)
+
+    research = research_field_value(insights)
+    if research:
+        embed.add_field(name="Research", value=research, inline=False)
 
     footer = source_display_name or row.source_name
     discovered = _discovered_label(row.discovered_at, now=now)
-    if insights.freshness:
-        heading = TYPE_HEADINGS.get(row.opportunity_type, TYPE_HEADINGS[OpportunityType.OTHER])
-        embed.set_author(name=f"{heading} · Opened today")
-    embed.set_footer(text=f"Source: {footer} \u2022 Discovered: {discovered}")
+    embed.set_footer(
+        text=f"{footer} · Discovered {discovered} · Research links are searches"
+    )
     return embed
 
 
@@ -209,6 +223,8 @@ def build_review_embed(
             ),
             inline=False,
         )
+    else:
+        embed.add_field(name="Classifier", value="No SIG matched", inline=False)
 
     embed.add_field(
         name="Verification",

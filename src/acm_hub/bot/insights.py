@@ -65,7 +65,15 @@ class OpportunityInsights:
 
     @property
     def has_panel(self) -> bool:
-        return bool(self.freshness or self.focus_tags or self.research_links)
+        return bool(self.focus_tags or self.research_links)
+
+
+def truncate_query_token(text: str, limit: int) -> str:
+    """Keep search URLs short enough for Discord field limits."""
+    cleaned = text.strip()
+    if len(cleaned) <= limit:
+        return cleaned
+    return cleaned[: limit - 1].rstrip() + "…"
 
 
 def _is_same_day(discovered_at: datetime | None, *, now: datetime) -> bool:
@@ -100,32 +108,32 @@ def focus_tags_for(row: models.Opportunity) -> tuple[str, ...]:
 
 def research_links_for(row: models.Opportunity) -> tuple[ResearchLink, ...]:
     """Prefixed search links. Labels make clear these are searches, not directories."""
-    company = row.organization.strip()
+    company = truncate_query_token(row.organization.strip(), 48)
     if not company:
         return ()
     role_hint = _TYPE_SEARCH_HINT.get(row.opportunity_type, "interview experience")
     title_token = row.title.strip().replace("\N{EN DASH}", " - ").split(" - ")[0].strip()
-    title_token = title_token[:60] if title_token else role_hint
+    title_token = truncate_query_token(title_token, 48) if title_token else role_hint
 
-    reddit_q = f'{company} {role_hint}'
+    reddit_q = f"{company} {role_hint}"
     recruiter_q = f'{company} (recruiter OR "talent acquisition" OR "university recruiter")'
     asu_q = f'{company} ("Arizona State University" OR ASU OR "Arizona State")'
 
     return (
         ResearchLink(
-            label="Interview notes (Reddit search)",
+            label="Interviews",
             url=f"https://www.reddit.com/search/?q={quote_plus(reddit_q)}&type=link&sort=new",
         ),
         ResearchLink(
-            label="Recruiters (LinkedIn search)",
+            label="Recruiters",
             url=f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(recruiter_q)}",
         ),
         ResearchLink(
-            label="ASU connections (LinkedIn search)",
+            label="ASU alumni",
             url=f"https://www.linkedin.com/search/results/people/?keywords={quote_plus(asu_q)}",
         ),
         ResearchLink(
-            label="Role threads (Reddit)",
+            label="Role threads",
             url=(
                 "https://www.reddit.com/search/?q="
                 f"{quote_plus(f'{company} {title_token}')}&type=link&sort=relevance"
@@ -138,37 +146,23 @@ def build_insights(
     row: models.Opportunity, *, now: datetime | None = None
 ) -> OpportunityInsights:
     reference = now or datetime.now(tz=UTC)
-    freshness = None
-    if _is_same_day(row.discovered_at, now=reference):
-        freshness = "Opened today — apply while the link is live"
+    freshness = "Opened today" if _is_same_day(row.discovered_at, now=reference) else None
     return OpportunityInsights(
         freshness=freshness,
         focus_tags=focus_tags_for(row),
         research_links=research_links_for(row),
-        disclaimer=(
-            "Focus tags come from the listing and ACM SIG matches — not a job "
-            "description dump and not interview outcomes. Research links are "
-            "searches; verify before you treat anything as fact."
-        ),
+        disclaimer="Research links are searches — verify before you trust them.",
     )
 
 
-def insights_embed_field_value(insights: OpportunityInsights) -> str:
-    """Compact Discord field body for the stand-out panel."""
-    lines: list[str] = []
-    if insights.freshness:
-        lines.append(f"**{insights.freshness}**")
-    if insights.focus_tags:
-        lines.append("Focus: " + " · ".join(f"`{tag}`" for tag in insights.focus_tags))
-    for link in insights.research_links[:3]:
-        lines.append(f"[{link.label}]({link.url})")
-    short_disclaimer = (
-        "Focus tags are listing themes + ACM SIGs, not JD dumps or interview outcomes. "
-        "Links are searches — verify before you trust them."
-    )
-    lines.append(f"_{short_disclaimer}_")
-    text = "\n".join(lines)
-    if len(text) > 1024:
-        return text[:1023] + "…"
-    return text
+def focus_field_value(insights: OpportunityInsights) -> str | None:
+    if not insights.focus_tags:
+        return None
+    return " · ".join(f"`{tag}`" for tag in insights.focus_tags)
 
+
+def research_field_value(insights: OpportunityInsights) -> str | None:
+    links = insights.research_links[:3]
+    if not links:
+        return None
+    return " · ".join(f"[{link.label}]({link.url})" for link in links)

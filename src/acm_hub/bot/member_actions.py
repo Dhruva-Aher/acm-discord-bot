@@ -15,7 +15,6 @@ from uuid import UUID
 import discord
 
 from acm_hub.bot.embeds.opportunity import ACM_GOLD, truncate
-from acm_hub.bot.insights import MAX_LINK_LABEL, build_insights
 from acm_hub.bot.report import ReportLinkButton
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
@@ -215,7 +214,7 @@ class CompanyPrepButton(
 
 
 def build_member_action_view(row: models.Opportunity) -> discord.ui.View:
-    """Apply, prep tools, report dead links, and one research search link."""
+    """Primary actions only — research links live in the embed to avoid clutter."""
     view: discord.ui.View = discord.ui.View(timeout=None)
     view.add_item(
         discord.ui.Button(
@@ -227,14 +226,4 @@ def build_member_action_view(row: models.Opportunity) -> discord.ui.View:
     view.add_item(ResumeCheckButton(row.id))
     view.add_item(CompanyPrepButton(row.id))
     view.add_item(ReportLinkButton(row.id))
-
-    insights = build_insights(row)
-    if insights.research_links:
-        link = insights.research_links[0]
-        label = link.label
-        if len(label) > MAX_LINK_LABEL:
-            label = label[: MAX_LINK_LABEL - 1] + "…"
-        view.add_item(
-            discord.ui.Button(label=label, style=discord.ButtonStyle.link, url=link.url)
-        )
     return view
