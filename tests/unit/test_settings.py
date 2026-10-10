@@ -28,6 +28,8 @@ def isolated_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "RESEARCH_CHANNEL_ID",
         "OFFICER_ROLE_ID",
         "GITHUB_TOKEN",
+        "ACM_CONFERENCES_ENABLED",
+        "ACM_CONFERENCES_URL",
         "LOG_LEVEL",
         "LOG_FORMAT",
         "SCHEDULER_ENABLED",

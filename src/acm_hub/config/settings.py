@@ -40,6 +40,9 @@ class Settings(BaseSettings):
 
     github_token: SecretStr | None = None
 
+    acm_conferences_enabled: bool = True
+    acm_conferences_url: str | None = None
+
     log_level: str = "INFO"
     log_format: Literal["text", "console"] = "console"
 

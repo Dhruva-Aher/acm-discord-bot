@@ -45,6 +45,7 @@ async def fetch_with_retry(
     client: httpx.AsyncClient,
     url: str,
     *,
+    headers: dict[str, str] | None = None,
     max_retries: int = 3,
     backoff_base_seconds: float = 1.0,
     sleep: object = None,
@@ -67,7 +68,7 @@ async def fetch_with_retry(
 
     for attempt in range(attempts):
         try:
-            response = await client.get(url)
+            response = await client.get(url, headers=headers)
         except httpx.RequestError as exc:
             last_exception = exc
             if attempt == attempts - 1:

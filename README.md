@@ -251,7 +251,9 @@ Optional:
 | --- | --- | --- |
 | `OFFICER_ROLE_ID` | unset | Role allowed to use `/acm-admin`. Falls back to Manage Server |
 | `RESEARCH_CHANNEL_ID` | unset | If set, approved research posts here instead of the opportunities channel |
-| `GITHUB_TOKEN` | unset | A no-scope token raises the anonymous rate limit |
+| `GITHUB_TOKEN` | unset | A no-scope token raises GitHub rate limits for the internship feed |
+| `ACM_CONFERENCES_ENABLED` | `true` | Set `false` when acm.org blocks automated fetches (HTTP 403) |
+| `ACM_CONFERENCES_URL` | unset | Override the official ACM conferences page URL |
 | `LOG_LEVEL` | `INFO` | Standard Python level name |
 | `LOG_FORMAT` | `console` | `console` for humans, `text` for JSON lines |
 | `SCHEDULER_ENABLED` | `true` | Set `false` to disable background collection |
@@ -465,8 +467,10 @@ configured SIG is actually reachable from its own first primary term.
 - **Backups.** `review_actions` is the audit trail of officer decisions and
   `opportunities` holds the rejection history that prevents re-queueing. Losing
   the database means every previously rejected opportunity returns.
-- **Rate limits.** discord.py handles Discord's limits. For GitHub, set
-  `GITHUB_TOKEN` (no scopes needed) if the container's IP is shared.
+- **Rate limits.** discord.py handles Discord's limits. The internship collector
+  reads `listings.json` via the GitHub REST API first, then falls back to the
+  raw host. Set `GITHUB_TOKEN` (no scopes needed) if either endpoint returns
+  HTTP 403 or 429 from a shared IP.
 - **Logs.** Set `LOG_FORMAT=text` for JSON lines. Tokens are `SecretStr` and
   render masked even if a settings object is logged by mistake.
 
@@ -503,6 +507,15 @@ different databases.
 
 **`/acm-admin` says "limited to ACM officers".** Set `OFFICER_ROLE_ID` to your
 officer role, or grant Manage Server.
+
+**Collector logs HTTP 403 for internships.** Add `GITHUB_TOKEN` to `.env` and
+restart. The bot tries the GitHub API, then `raw.githubusercontent.com`.
+
+**Collector logs HTTP 403 for ACM conferences.** acm.org often blocks
+datacenter and Docker egress with Cloudflare. ACM Hub does not bypass that.
+Browsers can still open the public page. Set `ACM_CONFERENCES_ENABLED=false` to
+stop the failing source, or run `/acm-admin sync` from a network where
+`https://www.acm.org/conferences` loads without a challenge.
 
 ## Roadmap
 

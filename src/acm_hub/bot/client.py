@@ -12,7 +12,10 @@ from __future__ import annotations
 import discord
 from discord.ext import commands
 
-from acm_hub.collectors.acm.conferences import AcmOfficialConferencesCollector
+from acm_hub.collectors.acm.conferences import (
+    DEFAULT_CONFERENCES_URL,
+    AcmOfficialConferencesCollector,
+)
 from acm_hub.collectors.asu.ready_to_mentor import AsuReadyToMentorCollector
 from acm_hub.collectors.base import Collector
 from acm_hub.collectors.github.simplify import SimplifyCollector
@@ -57,8 +60,15 @@ class AcmHubBot(commands.Bot):
                 max_retries=retries,
             ),
             AsuReadyToMentorCollector(timeout_seconds=timeout, max_retries=retries),
-            AcmOfficialConferencesCollector(timeout_seconds=timeout, max_retries=retries),
         ]
+        if settings.acm_conferences_enabled:
+            self.collectors.append(
+                AcmOfficialConferencesCollector(
+                    conferences_url=settings.acm_conferences_url or DEFAULT_CONFERENCES_URL,
+                    timeout_seconds=timeout,
+                    max_retries=retries,
+                )
+            )
 
         self.pipeline = OpportunityPipeline(
             database,

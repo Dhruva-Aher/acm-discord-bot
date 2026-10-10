@@ -17,7 +17,10 @@ import respx
 
 from acm_hub.collectors.base import CollectorError, safe_collect
 from acm_hub.collectors.github.simplify import (
+    DEFAULT_LISTINGS_API_URL,
+    DEFAULT_LISTINGS_RAW_URL,
     DEFAULT_LISTINGS_URL,
+    GITHUB_RAW_ACCEPT,
     MalformedListingError,
     SimplifyCollector,
     parse_listing,
@@ -243,7 +246,8 @@ class TestCollect:
 
     @pytest.mark.parametrize("status_code", [404, 500, 503])
     async def test_http_errors_become_collector_errors(self, status_code: int) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(return_value=httpx.Response(status_code))
+        respx.get(DEFAULT_LISTINGS_API_URL).mock(return_value=httpx.Response(status_code))
+        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(return_value=httpx.Response(status_code))
         collector = _collector()
         try:
             with pytest.raises(CollectorError, match=f"HTTP {status_code}"):
@@ -251,8 +255,27 @@ class TestCollect:
         finally:
             await collector.aclose()
 
+    async def test_api_403_falls_back_to_raw_host(
+        self, simplify_listings: list[dict[str, Any]]
+    ) -> None:
+        respx.get(DEFAULT_LISTINGS_API_URL).mock(return_value=httpx.Response(403))
+        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(
+            return_value=httpx.Response(200, json=simplify_listings)
+        )
+        collector = _collector()
+        try:
+            records = await collector.collect()
+        finally:
+            await collector.aclose()
+        assert records
+
     async def test_network_failure_becomes_a_collector_error(self) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(side_effect=httpx.ConnectError("no route to host"))
+        respx.get(DEFAULT_LISTINGS_API_URL).mock(
+            side_effect=httpx.ConnectError("no route to host")
+        )
+        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(
+            side_effect=httpx.ConnectError("no route to host")
+        )
         collector = _collector()
         try:
             with pytest.raises(CollectorError, match="could not reach"):
@@ -263,7 +286,7 @@ class TestCollect:
     async def test_github_token_is_sent_as_a_bearer_header(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        route = respx.get(DEFAULT_LISTINGS_URL).mock(
+        route = respx.get(DEFAULT_LISTINGS_API_URL).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector(github_token="ghp_example")  # noqa: S106 - fake value
@@ -272,6 +295,7 @@ class TestCollect:
         finally:
             await collector.aclose()
         assert route.calls.last.request.headers["Authorization"] == "Bearer ghp_example"
+        assert route.calls.last.request.headers["Accept"] == GITHUB_RAW_ACCEPT
 
     async def test_a_custom_url_is_used(self, simplify_listings: list[dict[str, Any]]) -> None:
         url = "https://example.test/listings.json"

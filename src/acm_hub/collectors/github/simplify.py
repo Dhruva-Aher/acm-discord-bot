@@ -50,11 +50,24 @@ from acm_hub.observability.logging import get_logger
 
 logger = get_logger(__name__)
 
-DEFAULT_LISTINGS_URL: Final = (
+DEFAULT_LISTINGS_API_URL: Final = (
+    "https://api.github.com/repos/SimplifyJobs/Summer2027-Internships/"
+    "contents/.github/scripts/listings.json?ref=dev"
+)
+DEFAULT_LISTINGS_RAW_URL: Final = (
     "https://raw.githubusercontent.com/SimplifyJobs/Summer2027-Internships/dev/"
     ".github/scripts/listings.json"
 )
+#: Primary fetch URL for tests and custom overrides that expect a single endpoint.
+DEFAULT_LISTINGS_URL: Final = DEFAULT_LISTINGS_API_URL
+LISTINGS_SOURCE_URL: Final = (
+    "https://github.com/SimplifyJobs/Summer2027-Internships/blob/dev/"
+    ".github/scripts/listings.json"
+)
 REPOSITORY_URL: Final = "https://github.com/SimplifyJobs/Summer2027-Internships"
+
+GITHUB_RAW_ACCEPT: Final = "application/vnd.github.raw+json"
+GITHUB_API_VERSION: Final = "2022-11-28"
 
 COLLECTOR_NAME: Final = "simplify_internships"
 DISPLAY_NAME: Final = "Simplify / Pitt CSC"
@@ -171,7 +184,7 @@ def parse_listing(record: Any) -> RawOpportunity:
     return RawOpportunity(
         source_name=COLLECTOR_NAME,
         source_external_id=source_external_id,
-        source_url=REPOSITORY_URL,
+        source_url=LISTINGS_SOURCE_URL,
         application_url=application_url,
         title=title,
         organization=company,
@@ -198,7 +211,7 @@ class SimplifyCollector(Collector):
 
     name = COLLECTOR_NAME
     display_name = DISPLAY_NAME
-    source_url = REPOSITORY_URL
+    source_url = LISTINGS_SOURCE_URL
 
     #: The feed is a single JSON array containing the repository's entire
     #: catalogue, so one successful fetch is the whole open set. When
@@ -211,7 +224,7 @@ class SimplifyCollector(Collector):
         self,
         *,
         client: httpx.AsyncClient | None = None,
-        listings_url: str = DEFAULT_LISTINGS_URL,
+        listings_url: str | None = None,
         github_token: str | None = None,
         timeout_seconds: float = 30.0,
         max_retries: int = 3,
@@ -222,14 +235,19 @@ class SimplifyCollector(Collector):
         Args:
             client: Reused HTTP client. When omitted the collector owns one and
                 closes it in :meth:`aclose`.
-            listings_url: Overridable so tests can point at a fixture server.
-            github_token: Optional; only raises the anonymous rate limit.
+            listings_url: When set, only this URL is fetched. When omitted, the
+                GitHub REST API is tried first, then the raw host as fallback.
+            github_token: Optional; raises rate limits for both API and raw.
             include_inactive: When ``False`` (the default) postings upstream has
                 marked closed or hidden are dropped at the source boundary.
         """
-        headers = {"Authorization": f"Bearer {github_token}"} if github_token else None
+        client_headers: dict[str, str] = {}
+        if github_token:
+            client_headers["Authorization"] = f"Bearer {github_token}"
         self._owns_client = client is None
-        self._client = client or build_client(timeout_seconds=timeout_seconds, headers=headers)
+        self._client = client or build_client(
+            timeout_seconds=timeout_seconds, headers=client_headers or None
+        )
         self._listings_url = listings_url
         self._max_retries = max_retries
         self._include_inactive = include_inactive
@@ -295,25 +313,67 @@ class SimplifyCollector(Collector):
             return False
         return raw.is_active is not False
 
-    async def _fetch_payload(self) -> Any:
-        try:
-            response = await fetch_with_retry(
-                self._client, self._listings_url, max_retries=self._max_retries
-            )
-        except httpx.HTTPStatusError as exc:
-            raise CollectorError(
-                self.name,
-                f"listings feed returned HTTP {exc.response.status_code} for {self._listings_url}",
-            ) from exc
-        except httpx.RequestError as exc:
-            raise CollectorError(
-                self.name, f"could not reach {self._listings_url}: {type(exc).__name__}: {exc}"
-            ) from exc
+    def _feed_attempts(self) -> list[tuple[str, dict[str, str]]]:
+        if self._listings_url is not None:
+            return [(self._listings_url, {})]
+        return [
+            (
+                DEFAULT_LISTINGS_API_URL,
+                {
+                    "Accept": GITHUB_RAW_ACCEPT,
+                    "X-GitHub-Api-Version": GITHUB_API_VERSION,
+                },
+            ),
+            (DEFAULT_LISTINGS_RAW_URL, {}),
+        ]
 
-        try:
-            return response.json()
-        except json.JSONDecodeError as exc:
-            raise CollectorError(self.name, f"listings feed was not valid JSON: {exc}") from exc
+    async def _fetch_payload(self) -> Any:
+        errors: list[str] = []
+        for url, request_headers in self._feed_attempts():
+            try:
+                response = await fetch_with_retry(
+                    self._client,
+                    url,
+                    headers=request_headers or None,
+                    max_retries=self._max_retries,
+                )
+            except httpx.HTTPStatusError as exc:
+                detail = (
+                    f"listings feed returned HTTP {exc.response.status_code} for {url}"
+                )
+                if exc.response.status_code in {403, 404, 429}:
+                    errors.append(detail)
+                    logger.warning(
+                        "simplify.feed_attempt_failed",
+                        url=url,
+                        status_code=exc.response.status_code,
+                    )
+                    continue
+                raise CollectorError(self.name, detail) from exc
+            except httpx.RequestError as exc:
+                errors.append(
+                    f"could not reach {url}: {type(exc).__name__}: {exc}"
+                )
+                logger.warning(
+                    "simplify.feed_attempt_failed",
+                    url=url,
+                    error=f"{type(exc).__name__}: {exc}",
+                )
+                continue
+            else:
+                try:
+                    return response.json()
+                except json.JSONDecodeError as exc:
+                    raise CollectorError(
+                        self.name, f"listings feed was not valid JSON: {exc}"
+                    ) from exc
+
+        hint = (
+            " Set GITHUB_TOKEN in .env (no scopes needed) if anonymous GitHub "
+            "limits are blocking the feed."
+        )
+        joined = "; ".join(errors) if errors else "no feed URLs configured"
+        raise CollectorError(self.name, f"{joined}.{hint}")
 
     async def aclose(self) -> None:
         """Close the HTTP client when this collector created it."""

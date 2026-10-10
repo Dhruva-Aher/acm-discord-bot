@@ -509,18 +509,31 @@ class AcmCommands(commands.Cog):
         )
         embed.add_field(name="Tracked overall", value=str(sum(counts.values())), inline=True)
 
+        source_links = {source.name: source.source_url for source in sources}
         if runs:
+            lines: list[str] = []
+            for run in sorted(runs, key=lambda item: item.collector):
+                label = display_names.get(run.collector, run.collector)
+                link = source_links.get(run.collector)
+                when = (
+                    f", last run <t:{int(run.started_at.timestamp())}:R>"
+                    if run.started_at
+                    else ""
+                )
+                if link:
+                    lines.append(
+                        f"**{label}** \u2014 {run.status.value}{when}\n"
+                        f"[Open source]({link})"
+                    )
+                else:
+                    lines.append(f"**{label}** \u2014 {run.status.value}{when}")
+            embed.add_field(name="Sources", value="\n".join(lines), inline=False)
+        elif sources:
             embed.add_field(
                 name="Sources",
                 value="\n".join(
-                    f"**{display_names.get(run.collector, run.collector)}** "
-                    f"\u2014 {run.status.value}"
-                    + (
-                        f", last run <t:{int(run.started_at.timestamp())}:R>"
-                        if run.started_at
-                        else ""
-                    )
-                    for run in sorted(runs, key=lambda item: item.collector)
+                    f"**{source.display_name}**\n[Open source]({source.source_url})"
+                    for source in sorted(sources, key=lambda item: item.name)
                 ),
                 inline=False,
             )

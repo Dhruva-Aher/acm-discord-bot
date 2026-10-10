@@ -366,11 +366,19 @@ class AcmOfficialConferencesCollector(Collector):
                 self._client, self._conferences_url, max_retries=self._max_retries
             )
         except httpx.HTTPStatusError as exc:
-            raise CollectorError(
-                self.name,
+            detail = (
                 f"conferences page returned HTTP {exc.response.status_code} "
-                f"for {self._conferences_url}",
-            ) from exc
+                f"for {self._conferences_url}"
+            )
+            if exc.response.status_code == 403:
+                detail += (
+                    "; ACM blocks many automated requests (Cloudflare). "
+                    "The public page still works in a browser. ACM Hub does not "
+                    "bypass that protection — disable this source with "
+                    "ACM_CONFERENCES_ENABLED=false or run sync from a network "
+                    "that can reach acm.org without a challenge"
+                )
+            raise CollectorError(self.name, detail) from exc
         except httpx.RequestError as exc:
             raise CollectorError(
                 self.name,
