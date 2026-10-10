@@ -117,7 +117,7 @@ class ReportLinkButton(
     def __init__(self, opportunity_id: UUID) -> None:
         super().__init__(
             discord.ui.Button(
-                label="Report link",
+                label="Report",
                 style=discord.ButtonStyle.danger,
                 custom_id=f"{REPORT_PREFIX}{opportunity_id}",
             )

@@ -1,7 +1,7 @@
 """Member buttons on published opportunity posts.
 
-Persistent :class:`~discord.ui.DynamicItem` handlers so Apply / Resume check /
-Company prep keep working after a restart. Resume PDF intake uses the
+Persistent :class:`~discord.ui.DynamicItem` handlers so Apply / Prep / Resume
+keep working after a restart. Resume PDF intake uses the
 ``/acm resume-check`` slash command (attachments are not available on buttons
 without privileged message-content intents).
 """
@@ -137,7 +137,7 @@ class ResumeCheckButton(
     def __init__(self, opportunity_id: UUID) -> None:
         super().__init__(
             discord.ui.Button(
-                label="Resume check",
+                label="Resume",
                 style=discord.ButtonStyle.secondary,
                 custom_id=f"{RESUME_PREFIX}{opportunity_id}",
             )
@@ -197,8 +197,8 @@ class CompanyPrepButton(
     def __init__(self, opportunity_id: UUID) -> None:
         super().__init__(
             discord.ui.Button(
-                label="Company prep",
-                style=discord.ButtonStyle.secondary,
+                label="Prep",
+                style=discord.ButtonStyle.primary,
                 custom_id=f"{PREP_PREFIX}{opportunity_id}",
             )
         )
@@ -262,7 +262,7 @@ def build_member_action_view(row: models.Opportunity) -> discord.ui.View:
             url=row.application_url,
         )
     )
-    view.add_item(ResumeCheckButton(row.id))
     view.add_item(CompanyPrepButton(row.id))
+    view.add_item(ResumeCheckButton(row.id))
     view.add_item(ReportLinkButton(row.id))
     return view

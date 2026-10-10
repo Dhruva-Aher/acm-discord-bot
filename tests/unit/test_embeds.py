@@ -19,7 +19,9 @@ from acm_hub.bot.embeds.opportunity import (
     build_opportunity_embed,
     build_review_embed,
     format_locations,
+    glance_line,
     mark_embed_closed,
+    title_with_company,
     truncate,
 )
 from acm_hub.db import models
@@ -73,35 +75,39 @@ def field_value(embed: discord.Embed, name: str) -> str:
 class TestOpportunityEmbed:
     def test_shows_the_core_facts(self) -> None:
         embed = build_opportunity_embed(build_row(), now=FROZEN_NOW)
-        assert embed.title == "Software Engineering Intern"
+        assert embed.title == "Software Engineering Intern @ Cloudflare"
         assert embed.url == "https://boards.example.com/jobs/123"
-        assert field_value(embed, "Company") == "Cloudflare"
+        assert embed.description is not None
+        assert "Cloudflare" in (embed.title or "")
+        assert "Sponsorship unknown" in embed.description
 
     def test_unknown_sponsorship_is_shown_as_unknown(self) -> None:
         """Silence must never render as eligibility."""
         embed = build_opportunity_embed(build_row(), now=FROZEN_NOW)
-        assert "**Sponsorship** · Unknown" in field_value(embed, "Eligibility")
+        assert embed.description is not None
+        assert "Sponsorship unknown" in embed.description
 
     @pytest.mark.parametrize(
         ("status", "expected"),
         [
-            (SponsorshipStatus.OFFERS_SPONSORSHIP, "Offers sponsorship (per source)"),
-            (SponsorshipStatus.NO_SPONSORSHIP, "Does not offer sponsorship (per source)"),
-            (SponsorshipStatus.CITIZENSHIP_REQUIRED, "U.S. citizenship required (per source)"),
+            (SponsorshipStatus.OFFERS_SPONSORSHIP, "Sponsorship offered (source)"),
+            (SponsorshipStatus.NO_SPONSORSHIP, "No sponsorship (source)"),
+            (SponsorshipStatus.CITIZENSHIP_REQUIRED, "U.S. citizenship required (source)"),
         ],
     )
     def test_stated_sponsorship_is_attributed_to_the_source(
         self, status: SponsorshipStatus, expected: str
     ) -> None:
         embed = build_opportunity_embed(build_row(sponsorship=status), now=FROZEN_NOW)
-        assert expected in field_value(embed, "Eligibility")
+        assert embed.description is not None
+        assert expected in embed.description
 
     def test_no_salary_or_deadline_fields_are_invented(self) -> None:
         embed = build_opportunity_embed(build_row(), now=FROZEN_NOW)
         names = {str(field.name).lower() for field in embed.fields}
         assert not names & {"salary", "compensation", "pay", "deadline", "requirements"}
 
-    def test_research_and_focus_are_separate_clean_fields(self) -> None:
+    def test_card_uses_compact_hierarchy_without_stand_out(self) -> None:
         embed = build_opportunity_embed(
             build_row(organization="Microsoft", title="Software Engineering Intern"),
             now=FROZEN_NOW,
@@ -110,36 +116,41 @@ class TestOpportunityEmbed:
         assert embed.author.name is not None
         assert "Opened today" in embed.author.name
         assert "Internship" in embed.author.name
-        research = field_value(embed, "Research")
-        assert "Interviews" in research
-        assert "Recruiters" in research
-        assert "ASU alumni" in research
-        assert "previous hire" not in research.lower()
+        assert embed.title == "Software Engineering Intern @ Microsoft"
         names = {str(field.name) for field in embed.fields}
         assert "Stand out" not in names
+        assert "Eligibility" not in names
+        assert "Organization" not in names
+        assert "Relevant SIGs" not in names
+        assert "Look up" in names
+        look_up = field_value(embed, "Look up")
+        assert "Interviews" in look_up
+        assert "Recruiters" in look_up
+        assert "ASU alumni" in look_up
         assert embed.footer is not None
         assert embed.footer.text is not None
         assert "searches" in embed.footer.text.lower()
 
-    def test_absent_description_leaves_the_body_empty(self) -> None:
-        assert build_opportunity_embed(build_row(), now=FROZEN_NOW).description is None
+    def test_glance_line_carries_location_and_eligibility(self) -> None:
+        row = build_row(locations=("Austin, TX",), degree_requirements=("Bachelor's",))
+        line = glance_line(row)
+        assert "Austin, TX" in line
+        assert "Sponsorship unknown" in line
+        assert "Bachelor's" in line
 
-    def test_a_long_description_is_truncated_not_dropped(self) -> None:
-        embed = build_opportunity_embed(build_row(description="x" * 2000), now=FROZEN_NOW)
-        assert embed.description is not None
-        assert len(embed.description) <= 400
-
-    def test_matched_sigs_are_listed(self) -> None:
-        embed = build_opportunity_embed(build_row(title="Machine Learning Intern"), now=FROZEN_NOW)
-        assert "SIGAI" in field_value(embed, "SIGs")
-
-    def test_no_sig_match_omits_the_sigs_field(self) -> None:
+    def test_no_dense_field_grid_when_sigs_are_absent(self) -> None:
         embed = build_opportunity_embed(
             build_row(title="Marketing Communications Intern"), now=FROZEN_NOW
         )
         names = {str(field.name) for field in embed.fields}
         assert "SIGs" not in names
-        assert "Relevant SIGs" not in names
+        assert "Company" not in names
+        assert "Location" not in names
+
+    def test_matched_sigs_appear_in_the_glance_line(self) -> None:
+        embed = build_opportunity_embed(build_row(title="Machine Learning Intern"), now=FROZEN_NOW)
+        assert embed.description is not None
+        assert "SIGAI" in embed.description
 
     def test_the_source_is_attributed_in_the_footer(self) -> None:
         embed = build_opportunity_embed(
@@ -177,6 +188,19 @@ class TestOpportunityEmbed:
         assert len(embed) <= 6000
         for field in embed.fields:
             assert field.value is not None and len(field.value) <= 1024
+
+
+class TestTitleWithCompany:
+    def test_joins_role_and_company(self) -> None:
+        assert title_with_company("Firmware Intern", "Zipline") == "Firmware Intern @ Zipline"
+
+    def test_falls_back_when_company_is_blank(self) -> None:
+        assert title_with_company("Firmware Intern", "  ") == "Firmware Intern"
+
+    def test_respects_discord_title_limit(self) -> None:
+        result = title_with_company("x" * 200, "y" * 80, limit=250)
+        assert len(result) <= 250
+        assert result.endswith(" @ " + "y" * 80) or result.endswith("…")
 
 
 class TestLocationRendering:
@@ -241,9 +265,9 @@ def test_unreadable_sig_json_degrades_gracefully() -> None:
     row = build_row()
     row.sig_matches = [{"unexpected": "shape"}]
     embed = build_opportunity_embed(row, now=datetime.now(tz=UTC))
-    names = {str(field.name) for field in embed.fields}
-    assert "SIGs" not in names
-    assert embed.title == "Software Engineering Intern"
+    assert embed.description is not None
+    assert "SIG" not in embed.description or "Sponsorship" in embed.description
+    assert "Software Engineering Intern" in (embed.title or "")
 
 
 class TestClosedEmbed:

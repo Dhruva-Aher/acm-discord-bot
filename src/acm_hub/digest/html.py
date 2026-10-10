@@ -85,12 +85,11 @@ def _render_row(
     source_display_names: Mapping[str, str],
     now: datetime,
 ) -> str:
-    title = escape(truncate(row.title, 200))
     url = escape(row.application_url, quote=True)
-    organization = escape(truncate(row.organization, 120))
     location = escape(format_locations(list(row.locations), row.remote_status))
     opportunity_type = TYPE_LABELS.get(row.opportunity_type, TYPE_LABELS[OpportunityType.OTHER])
-    sigs = escape(_sig_text(row))
+    sigs_raw = _sig_text(row)
+    sigs = escape(sigs_raw)
     source = escape(source_display_names.get(row.source_name, row.source_name))
     discovered = escape(_discovered_label(row.discovered_at, now=now))
     eligibility = "".join(f"<li>{escape(line)}</li>" for line in _eligibility_lines(row))
@@ -116,21 +115,27 @@ def _render_row(
             for link in insights.research_links[:3]
         )
         research = (
-            f'<aside class="insights"><p class="insights-title">Stand out</p>'
+            f'<aside class="insights"><p class="insights-title">Look up</p>'
             f"<ul>{items}</ul>"
             f'<p class="insights-note">{escape(insights.disclaimer)}</p></aside>'
         )
 
+    org = row.organization.strip()
+    role = row.title.strip()
+    combined = f"{role} @ {org}" if org else role
+    title_line = escape(truncate(combined, 220))
+    sig_row = f"<li>SIGs: {sigs}</li>" if sigs_raw != "None matched" else ""
+
     return f"""
 <article class="opportunity">
-  <h2><a href="{url}" rel="noopener noreferrer">{title}</a></h2>
+  <h2><a href="{url}" rel="noopener noreferrer">{title_line}</a></h2>
   <p class="meta"><span class="type">{escape(opportunity_type)}</span>
-    · <strong>{organization}</strong> · {location}</p>
+    · {location}</p>
   {fresh}
   {focus}
   {description}
   <ul class="facts">
-    <li>Relevant SIGs: {sigs}</li>
+    {sig_row}
     {eligibility}
     <li>Source: {source}</li>
     <li>Discovered: {discovered}</li>

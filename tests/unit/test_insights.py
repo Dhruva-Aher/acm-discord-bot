@@ -91,9 +91,9 @@ class TestMemberActionView:
                 label = getattr(item.item, "label", None)
             labels.append(label)
         assert "Apply" in labels
-        assert "Resume check" in labels
-        assert "Company prep" in labels
-        assert "Report link" in labels
+        assert "Resume" in labels
+        assert "Prep" in labels
+        assert "Report" in labels
         assert len(view.children) == 4
         apply = next(
             item

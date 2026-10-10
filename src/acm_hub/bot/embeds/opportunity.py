@@ -5,6 +5,9 @@ that the source did not state**. There is no salary field, no invented deadline,
 no "sponsorship available" guess. Where a source is silent, the field is either
 omitted or explicitly rendered as ``Unknown``, so a member never reads an ACM
 Hub post as a claim ACM never made.
+
+Discord gives us almost no layout control — hierarchy has to come from a short
+title, one glance line, and only the fields that earn their space.
 """
 
 from __future__ import annotations
@@ -27,7 +30,6 @@ from acm_hub.domain.enums import (
     SponsorshipStatus,
 )
 
-MAX_DESCRIPTION_LENGTH = 400
 MAX_LOCATIONS_SHOWN = 4
 
 TYPE_HEADINGS: dict[OpportunityType, str] = {
@@ -48,11 +50,20 @@ REMOTE_LABELS: dict[RemoteStatus, str] = {
     RemoteStatus.UNKNOWN: "Unknown",
 }
 
+#: Longer labels for digests / detailed surfaces.
 SPONSORSHIP_LABELS: dict[SponsorshipStatus, str] = {
     SponsorshipStatus.OFFERS_SPONSORSHIP: "Offers sponsorship (per source)",
     SponsorshipStatus.NO_SPONSORSHIP: "Does not offer sponsorship (per source)",
     SponsorshipStatus.CITIZENSHIP_REQUIRED: "U.S. citizenship required (per source)",
     SponsorshipStatus.UNKNOWN: "Unknown",
+}
+
+#: Short forms for the Discord glance line; still explicit, never invents eligibility.
+SPONSORSHIP_GLANCE: dict[SponsorshipStatus, str] = {
+    SponsorshipStatus.OFFERS_SPONSORSHIP: "Sponsorship offered (source)",
+    SponsorshipStatus.NO_SPONSORSHIP: "No sponsorship (source)",
+    SponsorshipStatus.CITIZENSHIP_REQUIRED: "U.S. citizenship required (source)",
+    SponsorshipStatus.UNKNOWN: "Sponsorship unknown",
 }
 
 ACM_GOLD = discord.Colour(0xFFC627)
@@ -92,20 +103,42 @@ def truncate(text: str, limit: int) -> str:
     return text[: limit - 1].rstrip() + "\u2026"
 
 
-def _sig_field_value(row: models.Opportunity) -> str | None:
+def title_with_company(title: str, organization: str, *, limit: int = 250) -> str:
+    """``Role @ Company`` so a scrolling feed answers who and where in one glance."""
+    role = title.strip()
+    company = organization.strip()
+    if not company:
+        return truncate(role, limit)
+    separator = " @ "
+    if len(role) + len(separator) + len(company) <= limit:
+        return f"{role}{separator}{company}"
+    # Prefer keeping a readable company over an ultra-long role string.
+    company_part = truncate(company, min(len(company), 72))
+    role_budget = limit - len(separator) - len(company_part)
+    return f"{truncate(role, max(role_budget, 16))}{separator}{company_part}"
+
+
+def _sig_labels(row: models.Opportunity) -> str | None:
     matches = sig_matches_from_json(row.sig_matches)
     if not matches:
         return None
     return " · ".join(match.sig for match in matches)
 
 
-def _eligibility_field_value(row: models.Opportunity) -> str:
-    lines = [f"**Sponsorship** · {SPONSORSHIP_LABELS[row.sponsorship]}"]
+def glance_line(row: models.Opportunity) -> str:
+    """Single description line: place, eligibility, SIGs when matched."""
+    parts: list[str] = []
+    location = format_locations(list(row.locations), row.remote_status)
+    parts.append(f"**{location}**" if location != "Unknown" else "Location unknown")
+    parts.append(SPONSORSHIP_GLANCE[row.sponsorship])
     if row.citizenship_requirement:
-        lines.append(f"**Citizenship** · {row.citizenship_requirement}")
+        parts.append(row.citizenship_requirement)
     if row.degree_requirements:
-        lines.append(f"**Degrees** · {', '.join(row.degree_requirements)}")
-    return "\n".join(lines)
+        parts.append(", ".join(row.degree_requirements))
+    sigs = _sig_labels(row)
+    if sigs:
+        parts.append(sigs)
+    return " · ".join(parts)
 
 
 def _discovered_label(discovered_at: datetime | None, *, now: datetime | None = None) -> str:
@@ -135,27 +168,12 @@ def build_opportunity_embed(
         heading = f"{heading} · Opened today"
 
     embed = discord.Embed(
-        title=truncate(row.title, 250),
+        title=title_with_company(row.title, row.organization),
         url=row.application_url,
         colour=STATUS_COLOURS.get(row.status, ACM_GOLD),
-        description=truncate(row.description, MAX_DESCRIPTION_LENGTH) if row.description else None,
+        description=glance_line(row),
     )
     embed.set_author(name=heading)
-
-    embed.add_field(name="Company", value=truncate(row.organization, 200), inline=True)
-    embed.add_field(
-        name="Location",
-        value=format_locations(list(row.locations), row.remote_status),
-        inline=True,
-    )
-    sigs = _sig_field_value(row)
-    if sigs:
-        embed.add_field(name="SIGs", value=sigs, inline=True)
-    else:
-        # Keep a third inline slot so Company / Location stay on one row.
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-    embed.add_field(name="Eligibility", value=_eligibility_field_value(row), inline=False)
 
     focus = focus_field_value(insights)
     if focus:
@@ -163,13 +181,11 @@ def build_opportunity_embed(
 
     research = research_field_value(insights)
     if research:
-        embed.add_field(name="Research", value=research, inline=False)
+        embed.add_field(name="Look up", value=research, inline=False)
 
     footer = source_display_name or row.source_name
     discovered = _discovered_label(row.discovered_at, now=now)
-    embed.set_footer(
-        text=f"{footer} · Discovered {discovered} · Research links are searches"
-    )
+    embed.set_footer(text=f"{footer} · {discovered} · Look-up links are searches")
     return embed
 
 

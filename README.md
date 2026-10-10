@@ -38,16 +38,15 @@ Right now (Milestones 1–7):
   truncated feed, and published messages are edited in place to `[CLOSED]`.
 - **Auto-publishes** new (non-baseline) findings by default. Officers can still
   set a noisy source to manual review. Members report dead application links
-  with **Report link** → **Hide for me** or **Remove for everyone**.
+  with **Report** → **Hide for me** or **Remove for everyone**.
 - Lets members browse with `/acm opportunities`, `/acm research` and
   `/acm conferences`, download a self-contained HTML digest with `/acm digest`,
   save interests with `/acm subscribe`, and page through results that only they
   can control.
-- On each published opportunity, adds a **Stand out** panel: same-day freshness,
-  focus tags from the listing + ACM SIGs (not a JD dump), and search links for
-  Reddit interview notes, LinkedIn recruiters, and ASU alumni at that company —
-  plus **Apply**, **Resume check**, **Company prep**, and **Report link**.
-  ACM Hub never invents who got hired or which skills interviewers want.
+- On each published opportunity, posts a compact card: **Role @ Company**, one
+  glance line (location · sponsorship · degrees · SIGs when matched), Focus tags,
+  and short **Look up** search links — plus **Apply**, **Prep**, **Resume**, and
+  **Report**. ACM Hub never invents who got hired or which skills interviewers want.
 
 ### A rule worth stating up front
 
