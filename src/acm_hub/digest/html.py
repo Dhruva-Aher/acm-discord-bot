@@ -16,6 +16,7 @@ from acm_hub.bot.embeds.opportunity import (
     format_locations,
     truncate,
 )
+from acm_hub.bot.insights import build_insights
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import sig_matches_from_json
 from acm_hub.domain.enums import OpportunityType
@@ -97,11 +98,36 @@ def _render_row(
     if row.description:
         description = f'<p class="description">{escape(truncate(row.description, 400))}</p>'
 
+    insights = build_insights(row, now=now)
+    fresh = (
+        f'<p class="fresh">{escape(insights.freshness)}</p>' if insights.freshness else ""
+    )
+    focus = ""
+    if insights.focus_tags:
+        pills = " ".join(
+            f'<span class="pill">{escape(tag)}</span>' for tag in insights.focus_tags
+        )
+        focus = f'<p class="focus"><span class="focus-label">Focus</span> {pills}</p>'
+    research = ""
+    if insights.research_links:
+        items = "".join(
+            f'<li><a href="{escape(link.url, quote=True)}" rel="noopener noreferrer">'
+            f"{escape(link.label)}</a></li>"
+            for link in insights.research_links[:3]
+        )
+        research = (
+            f'<aside class="insights"><p class="insights-title">Stand out</p>'
+            f"<ul>{items}</ul>"
+            f'<p class="insights-note">{escape(insights.disclaimer)}</p></aside>'
+        )
+
     return f"""
 <article class="opportunity">
   <h2><a href="{url}" rel="noopener noreferrer">{title}</a></h2>
   <p class="meta"><span class="type">{escape(opportunity_type)}</span>
     · <strong>{organization}</strong> · {location}</p>
+  {fresh}
+  {focus}
   {description}
   <ul class="facts">
     <li>Relevant SIGs: {sigs}</li>
@@ -109,6 +135,7 @@ def _render_row(
     <li>Source: {source}</li>
     <li>Discovered: {discovered}</li>
   </ul>
+  {research}
 </article>
 """
 
@@ -212,11 +239,52 @@ def build_opportunities_html(
       font-weight: 700;
     }}
     .description {{ margin: 0 0 0.7rem; }}
+    .fresh {{
+      margin: 0 0 0.6rem;
+      color: var(--maroon);
+      font-weight: 700;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 0.9rem;
+    }}
+    .focus {{ margin: 0 0 0.7rem; }}
+    .focus-label {{
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 0.75rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-right: 0.35rem;
+    }}
+    .pill {{
+      display: inline-block;
+      margin: 0.15rem 0.25rem 0.15rem 0;
+      padding: 0.15rem 0.45rem;
+      border: 1px solid var(--line);
+      background: #fffdf8;
+      font-size: 0.85rem;
+    }}
     .facts {{
       margin: 0;
       padding-left: 1.1rem;
       color: var(--ink);
     }}
+    .insights {{
+      margin: 0.9rem 0 0;
+      padding: 0.85rem 1rem;
+      border-top: 1px dashed var(--line);
+      background: linear-gradient(90deg, rgba(140, 29, 64, 0.04), transparent);
+    }}
+    .insights-title {{
+      margin: 0 0 0.4rem;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--maroon);
+      font-weight: 700;
+    }}
+    .insights ul {{ margin: 0.2rem 0 0.5rem; padding-left: 1.1rem; }}
+    .insights-note {{ margin: 0; font-size: 0.85rem; color: var(--muted); }}
     footer {{
       max-width: 52rem;
       margin: 0 auto;

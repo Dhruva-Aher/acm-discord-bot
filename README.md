@@ -44,6 +44,11 @@ Right now (Milestones 1–7):
   `/acm conferences`, download a self-contained HTML digest with `/acm digest`,
   save interests with `/acm subscribe`, and page through results that only they
   can control.
+- On each published opportunity, adds a **Stand out** panel: same-day freshness,
+  focus tags from the listing + ACM SIGs (not a JD dump), and search links for
+  Reddit interview notes, LinkedIn recruiters, and ASU alumni at that company —
+  plus **Apply** and research buttons. ACM Hub never invents who got hired or
+  which skills interviewers want.
 
 ### A rule worth stating up front
 

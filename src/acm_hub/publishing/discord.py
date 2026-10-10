@@ -25,6 +25,7 @@ from acm_hub.bot.embeds.opportunity import (
     build_review_embed,
     mark_embed_closed,
 )
+from acm_hub.bot.insights import build_member_action_view
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
@@ -237,7 +238,7 @@ class OpportunityPublisher:
 
         try:
             channel = await self._resolve_channel(channel_id)
-            message = await channel.send(embed=embed)
+            message = await channel.send(embed=embed, view=build_member_action_view(row))
         except (discord.HTTPException, ChannelUnavailableError):
             await self._release_claim(row.id, channel_id=channel_id)
             logger.error(

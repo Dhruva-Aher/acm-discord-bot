@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 
 import discord
 
+from acm_hub.bot.insights import build_insights, insights_embed_field_value
 from acm_hub.db import models
 from acm_hub.db.repositories.opportunities import sig_matches_from_json
 from acm_hub.domain.enums import (
@@ -141,8 +142,19 @@ def build_opportunity_embed(
     embed.add_field(name="Relevant SIGs", value=_sig_field_value(row), inline=True)
     embed.add_field(name="Eligibility", value=_eligibility_field_value(row), inline=False)
 
+    insights = build_insights(row, now=now)
+    if insights.has_panel:
+        embed.add_field(
+            name="Stand out",
+            value=insights_embed_field_value(insights),
+            inline=False,
+        )
+
     footer = source_display_name or row.source_name
     discovered = _discovered_label(row.discovered_at, now=now)
+    if insights.freshness:
+        heading = TYPE_HEADINGS.get(row.opportunity_type, TYPE_HEADINGS[OpportunityType.OTHER])
+        embed.set_author(name=f"{heading} · Opened today")
     embed.set_footer(text=f"Source: {footer} \u2022 Discovered: {discovered}")
     return embed
 

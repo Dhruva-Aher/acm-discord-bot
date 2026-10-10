@@ -51,10 +51,14 @@ TYPE_CHOICES = [
 
 def _result_line(row: models.Opportunity) -> str:
     """One search hit: title as a link, plus the facts the source actually gave."""
+    from acm_hub.bot.insights import build_insights
+
     location = format_locations(list(row.locations), row.remote_status)
     sigs = " \u00b7 ".join(str(entry.get("sig", "")) for entry in row.sig_matches)
+    freshness = build_insights(row).freshness
+    prefix = "**Opened today** · " if freshness else ""
     line = (
-        f"**[{truncate(row.title, 90)}]({row.application_url})**\n"
+        f"{prefix}**[{truncate(row.title, 90)}]({row.application_url})**\n"
         f"{truncate(row.organization, 60)} \u2014 {truncate(location, 60)}"
     )
     if sigs:

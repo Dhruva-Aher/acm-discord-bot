@@ -101,6 +101,18 @@ class TestOpportunityEmbed:
         names = {str(field.name).lower() for field in embed.fields}
         assert not names & {"salary", "compensation", "pay", "deadline", "requirements"}
 
+    def test_stand_out_panel_uses_searches_not_invented_hires(self) -> None:
+        embed = build_opportunity_embed(
+            build_row(organization="Microsoft", title="Software Engineering Intern"),
+            now=FROZEN_NOW,
+        )
+        value = field_value(embed, "Stand out")
+        assert "Opened today" in value
+        assert "Reddit" in value
+        assert "ASU" in value
+        assert "previous hire" not in value.lower()
+        assert "job description dump" in value.lower() or "listing themes" in value.lower()
+
     def test_absent_description_leaves_the_body_empty(self) -> None:
         assert build_opportunity_embed(build_row(), now=FROZEN_NOW).description is None
 
