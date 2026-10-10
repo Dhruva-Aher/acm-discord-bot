@@ -101,6 +101,11 @@ class OpportunityPublisher:
         self._research_channel_id = research_channel_id
         self._source_display_names = source_display_names or {}
 
+    @property
+    def source_display_names(self) -> dict[str, str]:
+        """Human-readable source labels used in embeds and digests."""
+        return dict(self._source_display_names)
+
     def _member_channel_id(self, row: models.Opportunity) -> int:
         """Channel an approved opportunity should be posted to.
 

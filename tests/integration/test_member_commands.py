@@ -1,4 +1,4 @@
-"""``/acm opportunities`` and ``/acm subscribe`` behaviour.
+"""``/acm opportunities``, ``/acm digest`` and ``/acm subscribe`` behaviour.
 
 These drive the command callbacks directly with a fake interaction, so they
 cover the parts a live-server smoke test cannot check quickly: what a member
@@ -37,6 +37,7 @@ def bot(database: Database) -> MagicMock:
     fake.database = database
     fake.settings = MagicMock(officer_role_id=OFFICER_ROLE_ID)
     fake.publisher = AsyncMock()
+    fake.publisher.source_display_names = {}
     fake.scheduler = AsyncMock()
     fake.latency = 0.042
     return fake
@@ -310,6 +311,69 @@ class TestPaginationView:
 
         assert view.next_page.disabled is True
         assert view.previous_page.disabled is True
+
+
+class TestDigest:
+    async def test_empty_catalogue_explains_itself(
+        self, bot: MagicMock, database: Database
+    ) -> None:
+        cog = AcmCommands(bot)
+        interaction = member_interaction(bot)
+        await invoke(cog, cog.digest, interaction, all=True)
+
+        assert "Nothing has been published yet." in sent_text(interaction)
+        assert interaction.followup.send.await_args.kwargs.get("file") is None
+
+    async def test_unpublished_rows_are_never_included(
+        self, bot: MagicMock, database: Database
+    ) -> None:
+        await add(database, title="Awaiting review", status=OpportunityStatus.PENDING_REVIEW)
+
+        cog = AcmCommands(bot)
+        interaction = member_interaction(bot)
+        await invoke(cog, cog.digest, interaction, all=True)
+
+        assert "Nothing has been published yet." in sent_text(interaction)
+
+    async def test_published_rows_become_an_ephemeral_html_file(
+        self, bot: MagicMock, database: Database
+    ) -> None:
+        await add(database, title="Compiler Intern", organization="Acme")
+
+        cog = AcmCommands(bot)
+        interaction = member_interaction(bot)
+        await invoke(cog, cog.digest, interaction, all=True)
+
+        kwargs = interaction.followup.send.await_args.kwargs
+        assert kwargs["ephemeral"] is True
+        assert "HTML digest with **1** published opportunity" in sent_text(interaction)
+        file = kwargs["file"]
+        assert isinstance(file, discord.File)
+        assert file.filename is not None and file.filename.endswith(".html")
+        raw = file.fp.read()
+        html = raw.decode("utf-8") if isinstance(raw, (bytes, bytearray)) else raw
+        assert "Compiler Intern" in html
+        assert "Acme" in html
+        assert "<script>" not in html
+
+    async def test_saved_interests_are_disclosed_on_the_digest(
+        self, bot: MagicMock, database: Database
+    ) -> None:
+        await add(database, title="AI role", sigs=("SIGAI",))
+        await add(database, title="Graphics role", sigs=("SIGGRAPH",))
+        async with database.session() as session:
+            await SubscriptionRepository(session).upsert(MEMBER_ID, sigs=["SIGAI"])
+
+        cog = AcmCommands(bot)
+        interaction = member_interaction(bot)
+        await invoke(cog, cog.digest, interaction)
+
+        summary = sent_text(interaction)
+        assert "Using your ACM interests:" in summary
+        assert "SIGAI" in summary
+        html = interaction.followup.send.await_args.kwargs["file"].fp.read().decode("utf-8")
+        assert "AI role" in html
+        assert "Graphics role" not in html
 
 
 class TestSubscribe:

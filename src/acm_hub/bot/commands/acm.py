@@ -1,7 +1,7 @@
 """Member-facing ``/acm`` commands.
 
-Five commands ship here: ``status``, ``opportunities``, ``research``,
-``conferences`` and ``subscribe``.
+Six commands ship here: ``status``, ``opportunities``, ``research``,
+``conferences``, ``digest`` and ``subscribe``.
 
 Two properties are enforced throughout.
 
@@ -14,6 +14,7 @@ and a count; it never loads the catalogue to slice it in Python.
 
 from __future__ import annotations
 
+from io import BytesIO
 from typing import TYPE_CHECKING
 
 import discord
@@ -29,6 +30,7 @@ from acm_hub.db.repositories.collector_runs import CollectorRunRepository
 from acm_hub.db.repositories.opportunities import OpportunityFilters, OpportunityRepository
 from acm_hub.db.repositories.sources import SourceRepository
 from acm_hub.db.repositories.subscriptions import SubscriptionRepository
+from acm_hub.digest.html import DEFAULT_DIGEST_LIMIT, build_opportunities_html
 from acm_hub.domain.enums import OpportunityStatus, OpportunityType
 from acm_hub.observability.logging import get_logger
 
@@ -349,6 +351,95 @@ class AcmCommands(commands.Cog):
             )
         )
         return embed
+
+    # --------------------------------------------------------------- digest
+
+    @acm.command(
+        name="digest",
+        description="Download an HTML digest of published opportunities",
+    )
+    @app_commands.describe(
+        type="Only include one kind of opportunity",
+        sig="Only include opportunities matched to this SIG",
+        organization="Only include organizations matching this text",
+        remote="Only include postings the source describes as remote or hybrid",
+        search="Match this text against the title or organization",
+        all="Ignore your saved interests and include everything published",
+    )
+    @app_commands.choices(sig=SIG_CHOICES, type=TYPE_CHOICES)
+    async def digest(
+        self,
+        interaction: discord.Interaction,
+        type: app_commands.Choice[str] | None = None,
+        sig: app_commands.Choice[str] | None = None,
+        organization: str | None = None,
+        remote: bool = False,
+        search: str | None = None,
+        all: bool = False,
+    ) -> None:
+        """Build a self-contained HTML file from published opportunities.
+
+        Same facts as the Discord embeds, as a downloadable page members can
+        open offline or share. Does not replace officer approval: only
+        published rows are included.
+        """
+        await interaction.response.defer(ephemeral=True, thinking=True)
+
+        explicit = OpportunityFilters(
+            opportunity_types=(OpportunityType(type.value),) if type else (),
+            sigs=(sig.value,) if sig else (),
+            organization=organization,
+            remote_only=remote,
+            query=search,
+        )
+
+        filters = explicit
+        personalized: str | None = None
+        if explicit.is_empty and not all:
+            filters, personalized = await self._personalized_filters(interaction.user.id)
+
+        async with self.bot.database.session() as session:
+            repository = OpportunityRepository(session)
+            total = await repository.count_published(filters)
+            rows = await repository.search_published(
+                filters, limit=DEFAULT_DIGEST_LIMIT, offset=0
+            )
+            sources = await SourceRepository(session).list_all()
+
+        if total == 0:
+            await interaction.followup.send(
+                self._no_results_message(personalized=personalized, all_requested=all),
+                ephemeral=True,
+            )
+            return
+
+        display_names = {source.name: source.display_name for source in sources}
+        display_names.update(self.bot.publisher.source_display_names)
+        digest = build_opportunities_html(
+            rows,
+            total_matching=total,
+            source_display_names=display_names,
+            filter_summary=personalized,
+        )
+        filename = (
+            f"acm-hub-digest-{digest.generated_at.astimezone().strftime('%Y%m%d-%H%M')}.html"
+        )
+        file = discord.File(BytesIO(digest.html.encode("utf-8")), filename=filename)
+
+        summary = (
+            f"HTML digest with **{digest.included}** published opportunit"
+            f"{'y' if digest.included == 1 else 'ies'}"
+        )
+        if digest.truncated:
+            summary += f" (of {digest.total_matching} matching)"
+        if personalized:
+            summary += f"\nUsing your ACM interests: {truncate(personalized, 200)}"
+        summary += (
+            "\nOpen the file in a browser. Details come from sources; "
+            "ACM Hub does not invent eligibility."
+        )
+
+        await interaction.followup.send(summary, file=file, ephemeral=True)
 
     # ------------------------------------------------------------ preferences
 

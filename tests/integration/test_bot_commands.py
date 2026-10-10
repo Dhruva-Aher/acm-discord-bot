@@ -71,6 +71,7 @@ class TestCommandRegistration:
             "acm opportunities",
             "acm research",
             "acm conferences",
+            "acm digest",
             "acm subscribe",
         }
 

@@ -38,8 +38,9 @@ Right now (Milestones 1–7):
   explicitly set that source to auto-publish. Nothing reaches members until
   then.
 - Lets members browse with `/acm opportunities`, `/acm research` and
-  `/acm conferences`, save interests with `/acm subscribe`, and page through
-  results that only they can control.
+  `/acm conferences`, download a self-contained HTML digest with `/acm digest`,
+  save interests with `/acm subscribe`, and page through results that only they
+  can control.
 
 ### A rule worth stating up front
 
@@ -110,6 +111,7 @@ message is edited, never deleted.
 | `src/acm_hub/pipeline/` | Normalize, validate, deduplicate, classify, orchestrate |
 | `src/acm_hub/db/` | SQLAlchemy models, async session, repositories |
 | `src/acm_hub/publishing/` | The only code that sends messages to Discord |
+| `src/acm_hub/digest/` | HTML digest of published opportunities (same facts as embeds) |
 | `src/acm_hub/bot/` | Client, slash commands, embeds, permission checks |
 | `src/acm_hub/scheduler/` | APScheduler jobs with overlap protection |
 | `src/acm_hub/config/` | Settings and SIG classification rules |
@@ -311,6 +313,7 @@ Member commands:
 | `/acm opportunities` | Browse published opportunities. Filters and paging are SQL. Saved interests apply when you pass no filters; `all:true` ignores them |
 | `/acm research` | Browse published Ready-to-mentor faculty only. Saved SIGs apply; saved types do not |
 | `/acm conferences` | Browse published official ACM conferences only |
+| `/acm digest` | Download an HTML digest of published opportunities. Same filters and saved-interest behaviour as `/acm opportunities`; only published rows; capped at 200 |
 | `/acm subscribe` | Save type and SIG interests. ACM Hub never sends DMs |
 
 Officer commands (hidden from members, and re-checked at runtime):
@@ -513,6 +516,7 @@ officer role, or grant Manage Server.
 | 5 | `/acm opportunities`, subscriptions, filtering and search | Done |
 | 6 | ASU Ready-to-Mentor research radar, `/acm research` | Done |
 | 7 | Official ACM conferences page, `/acm conferences` | Done |
+| 7.5 | `/acm digest` HTML export of published opportunities | Done |
 | 8 | Remaining production ops (multi-instance, alerting) | Partial |
 
 The research radar only labels a professor as recruiting when the official
