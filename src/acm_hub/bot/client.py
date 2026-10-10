@@ -18,6 +18,10 @@ from acm_hub.collectors.acm.conferences import (
 )
 from acm_hub.collectors.asu.ready_to_mentor import AsuReadyToMentorCollector
 from acm_hub.collectors.base import Collector
+from acm_hub.collectors.github.feeds_config import (
+    parse_discover_orgs,
+    parse_internship_github_feeds,
+)
 from acm_hub.collectors.github.simplify import SimplifyCollector
 from acm_hub.config.settings import Settings
 from acm_hub.db.session import Database
@@ -53,6 +57,8 @@ class AcmHubBot(commands.Bot):
         retries = settings.http_max_retries
         self.collectors: list[Collector] = [
             SimplifyCollector(
+                feeds=parse_internship_github_feeds(settings.internship_github_feeds),
+                discover_orgs=parse_discover_orgs(settings.internship_github_discover_orgs),
                 github_token=(
                     settings.github_token.get_secret_value() if settings.github_token else None
                 ),

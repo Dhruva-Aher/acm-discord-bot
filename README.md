@@ -13,9 +13,12 @@ none of that. It requests no moderation permissions and no privileged intents.
 
 Right now (Milestones 1–7):
 
-- Collects open internship listings from the
-  [SimplifyJobs / Pitt CSC](https://github.com/SimplifyJobs/Summer2027-Internships)
-  community list.
+- Collects **open only** CS internships and new-grad roles from multiple
+  public [SimplifyJobs](https://github.com/SimplifyJobs) GitHub
+  ``listings.json`` feeds (Summer 2027 internships, new-grad list, plus any
+  matching repos discovered in that org). Rows with ``active: false`` or
+  ``is_visible: false`` are dropped; duplicates across feeds merge on the
+  application URL.
 - Collects ASU faculty who are **explicitly labelled Ready to mentor** on the
   official [Fulton Forge mentors page](https://forge.engineering.asu.edu/mentors/).
   Expo-only mentors, lab pages, grants and publication records are not treated
@@ -252,6 +255,8 @@ Optional:
 | `OFFICER_ROLE_ID` | unset | Role allowed to use `/acm-admin`. Falls back to Manage Server |
 | `RESEARCH_CHANNEL_ID` | unset | If set, approved research posts here instead of the opportunities channel |
 | `GITHUB_TOKEN` | unset | A no-scope token raises GitHub rate limits for the internship feed |
+| `INTERNSHIP_GITHUB_FEEDS` | Summer 2027 + new grad | Semicolon-separated ``owner/repo@branch\|label`` entries |
+| `INTERNSHIP_GITHUB_DISCOVER_ORGS` | `SimplifyJobs` | Comma-separated orgs to scan for extra CS listing repos |
 | `ACM_CONFERENCES_ENABLED` | `true` | Set `false` when acm.org blocks automated fetches (HTTP 403) |
 | `ACM_CONFERENCES_URL` | unset | Override the official ACM conferences page URL |
 | `LOG_LEVEL` | `INFO` | Standard Python level name |

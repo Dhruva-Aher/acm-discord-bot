@@ -10,7 +10,13 @@ import pytest
 import respx
 
 from acm_hub.collectors.base import Collector, CollectorError
-from acm_hub.collectors.github.simplify import DEFAULT_LISTINGS_URL, SimplifyCollector
+from acm_hub.collectors.github.feeds_config import GitHubListingsFeed
+from acm_hub.collectors.github.listings_fetch import feed_api_url
+from acm_hub.collectors.github.simplify import SimplifyCollector
+
+_SUMMER2027_API = feed_api_url(
+    GitHubListingsFeed(owner="SimplifyJobs", repo="Summer2027-Internships")
+)
 from acm_hub.db.repositories.collector_runs import CollectorRunRepository
 from acm_hub.db.repositories.opportunities import OpportunityRepository
 from acm_hub.db.session import Database
@@ -231,10 +237,14 @@ class TestPipelineWithTheRealCollector:
     ) -> None:
         """Real upstream records, mocked transport, full pipeline."""
         await initialize_source(database, "simplify_internships")
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(_SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
-        collector = SimplifyCollector(max_retries=0)
+        collector = SimplifyCollector(
+            max_retries=0,
+            feeds=[GitHubListingsFeed(owner="SimplifyJobs", repo="Summer2027-Internships")],
+            discover_orgs=(),
+        )
         try:
             stats = await OpportunityPipeline(database).run(collector)
         finally:
@@ -258,8 +268,12 @@ class TestPipelineWithTheRealCollector:
     async def test_github_being_down_records_a_failure_and_stores_nothing(
         self, database: Database
     ) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(side_effect=httpx.ConnectTimeout("timed out"))
-        collector = SimplifyCollector(max_retries=0)
+        respx.get(_SUMMER2027_API).mock(side_effect=httpx.ConnectTimeout("timed out"))
+        collector = SimplifyCollector(
+            max_retries=0,
+            feeds=[GitHubListingsFeed(owner="SimplifyJobs", repo="Summer2027-Internships")],
+            discover_orgs=(),
+        )
         try:
             stats = await OpportunityPipeline(database).run(collector)
         finally:

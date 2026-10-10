@@ -16,15 +16,22 @@ import pytest
 import respx
 
 from acm_hub.collectors.base import CollectorError, safe_collect
-from acm_hub.collectors.github.simplify import (
-    DEFAULT_LISTINGS_API_URL,
-    DEFAULT_LISTINGS_RAW_URL,
-    DEFAULT_LISTINGS_URL,
+from acm_hub.collectors.github.feeds_config import GitHubListingsFeed
+from acm_hub.collectors.github.listings_fetch import (
     GITHUB_RAW_ACCEPT,
+    feed_api_url,
+    feed_raw_url,
+)
+from acm_hub.collectors.github.simplify import (
     MalformedListingError,
     SimplifyCollector,
+    listing_is_open,
     parse_listing,
 )
+
+SUMMER2027_FEED = GitHubListingsFeed(owner="SimplifyJobs", repo="Summer2027-Internships")
+SUMMER2027_API = feed_api_url(SUMMER2027_FEED)
+SUMMER2027_RAW = feed_raw_url(SUMMER2027_FEED)
 from acm_hub.collectors.http import fetch_with_retry
 from acm_hub.domain.enums import OpportunityType, SponsorshipStatus, VerificationStatus
 
@@ -46,7 +53,21 @@ async def _noop_sleep(_seconds: float) -> None:
 
 
 def _collector(**kwargs: Any) -> SimplifyCollector:
+    kwargs.setdefault("feeds", [SUMMER2027_FEED])
+    kwargs.setdefault("discover_orgs", ())
     return SimplifyCollector(max_retries=0, **kwargs)
+
+
+class TestListingIsOpen:
+    def test_requires_active_true(self, simplify_listings: list[dict[str, Any]]) -> None:
+        open_record = simplify_listings[0]
+        closed_record = next(r for r in simplify_listings if r.get("active") is False)
+        assert listing_is_open(open_record) is True
+        assert listing_is_open(closed_record) is False
+
+    def test_missing_active_is_treated_as_closed(self) -> None:
+        assert listing_is_open({"active": None, "is_visible": True}) is False
+        assert listing_is_open({"is_visible": True}) is False
 
 
 class TestParseListing:
@@ -163,7 +184,7 @@ class TestCollect:
     async def test_returns_only_open_listings(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector()
@@ -179,7 +200,7 @@ class TestCollect:
     async def test_include_inactive_returns_everything(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector(include_inactive=True)
@@ -194,7 +215,7 @@ class TestCollect:
     ) -> None:
         """One bad row upstream must not cost us the whole run."""
         payload = [{"nonsense": True}, *simplify_listings]
-        respx.get(DEFAULT_LISTINGS_URL).mock(return_value=httpx.Response(200, json=payload))
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(200, json=payload))
         collector = _collector()
         try:
             records = await collector.collect()
@@ -204,7 +225,7 @@ class TestCollect:
 
     async def test_a_wholly_changed_format_fails_loudly(self) -> None:
         """If nothing parses, report a failure rather than "0 opportunities"."""
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=[{"unexpected": 1}, {"unexpected": 2}])
         )
         collector = _collector()
@@ -215,7 +236,7 @@ class TestCollect:
             await collector.aclose()
 
     async def test_non_array_payload_fails(self) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json={"listings": []})
         )
         collector = _collector()
@@ -226,7 +247,7 @@ class TestCollect:
             await collector.aclose()
 
     async def test_invalid_json_fails(self) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, text="<!DOCTYPE html><html>404</html>")
         )
         collector = _collector()
@@ -237,7 +258,7 @@ class TestCollect:
             await collector.aclose()
 
     async def test_empty_feed_is_not_an_error(self) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(return_value=httpx.Response(200, json=[]))
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(200, json=[]))
         collector = _collector()
         try:
             assert await collector.collect() == []
@@ -246,11 +267,11 @@ class TestCollect:
 
     @pytest.mark.parametrize("status_code", [404, 500, 503])
     async def test_http_errors_become_collector_errors(self, status_code: int) -> None:
-        respx.get(DEFAULT_LISTINGS_API_URL).mock(return_value=httpx.Response(status_code))
-        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(return_value=httpx.Response(status_code))
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(status_code))
+        respx.get(SUMMER2027_RAW).mock(return_value=httpx.Response(status_code))
         collector = _collector()
         try:
-            with pytest.raises(CollectorError, match=f"HTTP {status_code}"):
+            with pytest.raises(CollectorError, match=str(status_code)):
                 await collector.collect()
         finally:
             await collector.aclose()
@@ -258,8 +279,8 @@ class TestCollect:
     async def test_api_403_falls_back_to_raw_host(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        respx.get(DEFAULT_LISTINGS_API_URL).mock(return_value=httpx.Response(403))
-        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(403))
+        respx.get(SUMMER2027_RAW).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector()
@@ -270,15 +291,15 @@ class TestCollect:
         assert records
 
     async def test_network_failure_becomes_a_collector_error(self) -> None:
-        respx.get(DEFAULT_LISTINGS_API_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             side_effect=httpx.ConnectError("no route to host")
         )
-        respx.get(DEFAULT_LISTINGS_RAW_URL).mock(
+        respx.get(SUMMER2027_RAW).mock(
             side_effect=httpx.ConnectError("no route to host")
         )
         collector = _collector()
         try:
-            with pytest.raises(CollectorError, match="could not reach"):
+            with pytest.raises(CollectorError, match="ConnectError"):
                 await collector.collect()
         finally:
             await collector.aclose()
@@ -286,7 +307,7 @@ class TestCollect:
     async def test_github_token_is_sent_as_a_bearer_header(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        route = respx.get(DEFAULT_LISTINGS_API_URL).mock(
+        route = respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector(github_token="ghp_example")  # noqa: S106 - fake value
@@ -297,10 +318,27 @@ class TestCollect:
         assert route.calls.last.request.headers["Authorization"] == "Bearer ghp_example"
         assert route.calls.last.request.headers["Accept"] == GITHUB_RAW_ACCEPT
 
+    async def test_duplicate_application_urls_across_feeds_are_merged(
+        self, simplify_listings: list[dict[str, Any]]
+    ) -> None:
+        second_feed = GitHubListingsFeed(owner="SimplifyJobs", repo="New-Grad-Positions")
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(200, json=simplify_listings[:1]))
+        respx.get(feed_api_url(second_feed)).mock(
+            return_value=httpx.Response(200, json=[simplify_listings[0]])
+        )
+        collector = _collector(
+            feeds=[SUMMER2027_FEED, second_feed],
+        )
+        try:
+            records = await collector.collect()
+        finally:
+            await collector.aclose()
+        assert len(records) == 1
+
     async def test_a_custom_url_is_used(self, simplify_listings: list[dict[str, Any]]) -> None:
         url = "https://example.test/listings.json"
         respx.get(url).mock(return_value=httpx.Response(200, json=simplify_listings))
-        collector = _collector(listings_url=url)
+        collector = _collector(listings_url=url, feeds=[SUMMER2027_FEED])
         try:
             assert await collector.collect()
         finally:
@@ -310,7 +348,7 @@ class TestCollect:
 class TestSafeCollect:
     async def test_a_failing_collector_is_reported_not_raised(self) -> None:
         """The isolation boundary: one dead source must not stop the others."""
-        respx.get(DEFAULT_LISTINGS_URL).mock(return_value=httpx.Response(500))
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(500))
         collector = _collector()
         try:
             outcome = await safe_collect(collector)
@@ -325,7 +363,7 @@ class TestSafeCollect:
     async def test_a_successful_collector_reports_its_records(
         self, simplify_listings: list[dict[str, Any]]
     ) -> None:
-        respx.get(DEFAULT_LISTINGS_URL).mock(
+        respx.get(SUMMER2027_API).mock(
             return_value=httpx.Response(200, json=simplify_listings)
         )
         collector = _collector()

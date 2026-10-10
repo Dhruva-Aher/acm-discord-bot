@@ -13,6 +13,11 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from acm_hub.collectors.github.feeds_config import (
+    DEFAULT_INTERNSHIP_GITHUB_FEEDS,
+    parse_internship_github_feeds,
+)
+
 
 class Settings(BaseSettings):
     """Validated process configuration.
@@ -39,6 +44,8 @@ class Settings(BaseSettings):
     database_url: str
 
     github_token: SecretStr | None = None
+    internship_github_feeds: str = Field(default=DEFAULT_INTERNSHIP_GITHUB_FEEDS)
+    internship_github_discover_orgs: str = Field(default="SimplifyJobs")
 
     acm_conferences_enabled: bool = True
     acm_conferences_url: str | None = None
@@ -69,6 +76,12 @@ class Settings(BaseSettings):
 
     sig_score_threshold: float = Field(default=0.25, ge=0.0, le=1.0)
     sig_max_matches: int = Field(default=3, ge=1, le=9)
+
+    @field_validator("internship_github_feeds")
+    @classmethod
+    def _valid_internship_feeds(cls, value: str) -> str:
+        parse_internship_github_feeds(value)
+        return value
 
     @field_validator("database_url")
     @classmethod
