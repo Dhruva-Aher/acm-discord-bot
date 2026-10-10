@@ -6,7 +6,10 @@ from acm_hub.db.repositories.hides import MemberHideRepository
 from acm_hub.db.repositories.opportunities import OpportunityFilters, OpportunityRepository
 from acm_hub.db.session import Database
 from acm_hub.domain.enums import OpportunityStatus
+from acm_hub.pipeline.process import OpportunityPipeline
+from tests.conftest import make_raw
 from tests.integration.test_opportunity_search import add
+from tests.integration.test_pipeline import StubCollector
 
 MEMBER_ID = 777_001
 OTHER_ID = 777_002
@@ -43,3 +46,21 @@ class TestMemberHides:
             )
 
         assert all(item.id != row.id for item in remaining)
+
+
+class TestBaselineReleaseAutoApprove:
+    async def test_auto_approve_marks_released_rows_approved(
+        self, database: Database
+    ) -> None:
+        await OpportunityPipeline(database).run(
+            StubCollector([make_raw(application_url="https://example.com/base")])
+        )
+        async with database.session() as session:
+            released = await OpportunityRepository(session).release_baseline(
+                "stub", limit=5, auto_approve=True
+            )
+            rows = await OpportunityRepository(session).list_awaiting_publication(10)
+
+        assert released == 1
+        assert len(rows) == 1
+        assert rows[0].status is OpportunityStatus.APPROVED

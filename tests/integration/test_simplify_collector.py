@@ -28,12 +28,12 @@ from acm_hub.collectors.github.simplify import (
     listing_is_open,
     parse_listing,
 )
+from acm_hub.collectors.http import fetch_with_retry
+from acm_hub.domain.enums import OpportunityType, SponsorshipStatus, VerificationStatus
 
 SUMMER2027_FEED = GitHubListingsFeed(owner="SimplifyJobs", repo="Summer2027-Internships")
 SUMMER2027_API = feed_api_url(SUMMER2027_FEED)
 SUMMER2027_RAW = feed_raw_url(SUMMER2027_FEED)
-from acm_hub.collectors.http import fetch_with_retry
-from acm_hub.domain.enums import OpportunityType, SponsorshipStatus, VerificationStatus
 
 
 @pytest.fixture(autouse=True)
@@ -317,6 +317,22 @@ class TestCollect:
             await collector.aclose()
         assert route.calls.last.request.headers["Authorization"] == "Bearer ghp_example"
         assert route.calls.last.request.headers["Accept"] == GITHUB_RAW_ACCEPT
+
+    async def test_partial_feed_failure_disables_complete_snapshot(
+        self, simplify_listings: list[dict[str, Any]]
+    ) -> None:
+        """One failed feed must not look like the other feed's jobs closed."""
+        second_feed = GitHubListingsFeed(owner="SimplifyJobs", repo="New-Grad-Positions")
+        respx.get(SUMMER2027_API).mock(return_value=httpx.Response(200, json=simplify_listings))
+        respx.get(feed_api_url(second_feed)).mock(return_value=httpx.Response(503))
+        respx.get(feed_raw_url(second_feed)).mock(return_value=httpx.Response(503))
+        collector = _collector(feeds=[SUMMER2027_FEED, second_feed])
+        try:
+            records = await collector.collect()
+        finally:
+            await collector.aclose()
+        assert records
+        assert collector.produces_complete_snapshot is False
 
     async def test_duplicate_application_urls_across_feeds_are_merged(
         self, simplify_listings: list[dict[str, Any]]

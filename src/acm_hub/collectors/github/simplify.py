@@ -237,6 +237,10 @@ class SimplifyCollector(Collector):
             self.produces_complete_snapshot = False
 
     async def collect(self) -> list[RawOpportunity]:
+        # Reset each run: a prior partial failure must not permanently disable
+        # closure detection, and a partial run must not look like a full snapshot.
+        self.produces_complete_snapshot = not self._include_inactive
+
         feeds = await self._feeds_for_run()
         if not feeds and self._listings_url is None:
             raise CollectorError(self.name, "no GitHub internship feeds are configured")
@@ -296,6 +300,16 @@ class SimplifyCollector(Collector):
                 "are blocking feeds."
             )
             raise CollectorError(self.name, "; ".join(feed_errors) + hint)
+
+        if feed_errors:
+            # One dead feed would look like mass closures on the jobs that feed
+            # alone provides. Skip the closure sweep for this run.
+            self.produces_complete_snapshot = False
+            logger.warning(
+                "github_listings.partial_feed_failure",
+                feed_errors=feed_errors,
+                usable=len(opportunities),
+            )
 
         if total_records and not opportunities and skipped_malformed >= total_records:
             raise CollectorError(

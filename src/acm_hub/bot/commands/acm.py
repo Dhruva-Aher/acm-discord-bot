@@ -225,9 +225,11 @@ class AcmCommands(commands.Cog):
     ) -> None:
         """Fetch one page and reply with results or the empty-state copy."""
 
+        async with self.bot.database.session() as session:
+            hidden = await MemberHideRepository(session).hidden_ids(interaction.user.id)
+
         async def fetch(offset: int) -> Page[models.Opportunity]:
             async with self.bot.database.session() as session:
-                hidden = await MemberHideRepository(session).hidden_ids(interaction.user.id)
                 repository = OpportunityRepository(session)
                 items = await repository.search_published(
                     filters,

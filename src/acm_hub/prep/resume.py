@@ -58,8 +58,12 @@ def extract_pdf_text(data: bytes) -> tuple[str, int]:
     pages = list(reader.pages)
     chunks: list[str] = []
     for page in pages:
-        extracted = page.extract_text()
-        chunks.append(extracted or "")
+        try:
+            extracted = page.extract_text() or ""
+        except Exception as exc:  # noqa: BLE001
+            del exc
+            extracted = ""
+        chunks.append(extracted)
     text = _WHITESPACE.sub(" ", " ".join(chunks)).strip()
     return text[:MAX_TEXT_CHARS], len(pages)
 

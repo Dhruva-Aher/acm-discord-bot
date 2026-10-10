@@ -392,7 +392,9 @@ class OpportunityPublisher:
 
         try:
             message = await channel.fetch_message(message_id)
-            await message.edit(embed=embed)
+            # Drop Apply / Report / prep buttons so a closed posting cannot be
+            # acted on as if it were still open.
+            await message.edit(embed=embed, view=None)
         except discord.NotFound:
             logger.info("closure.message_gone", channel_id=channel_id, message_id=message_id)
             return False

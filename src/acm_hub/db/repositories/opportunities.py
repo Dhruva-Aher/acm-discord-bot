@@ -729,12 +729,18 @@ class OpportunityRepository:
         )
         return list(result.scalars().all())
 
-    async def release_baseline(self, source_name: str, *, limit: int) -> int:
-        """Move baseline rows into the normal review flow.
+    async def release_baseline(
+        self, source_name: str, *, limit: int, auto_approve: bool = False
+    ) -> int:
+        """Move baseline rows into the normal review or publish flow.
 
-        Bounded by ``limit`` because the caller then posts a review card per
-        row; releasing an entire backlog in one call is exactly the Discord
-        flood the baseline mechanism exists to prevent.
+        Bounded by ``limit`` because the caller then posts a review card or
+        publish pass per row; releasing an entire backlog in one call is
+        exactly the Discord flood the baseline mechanism exists to prevent.
+
+        When ``auto_approve`` is set (source policy is auto-publish), rows are
+        marked ``approved`` so the next publish pass posts them without an
+        officer click.
 
         Returns:
             How many rows were released.
@@ -752,10 +758,13 @@ class OpportunityRepository:
         identifiers = list(selected.scalars().all())
         if not identifiers:
             return 0
+        values: dict[str, object] = {"is_baseline": False}
+        if auto_approve:
+            values["status"] = OpportunityStatus.APPROVED
         result = await self._session.execute(
             sa.update(models.Opportunity)
             .where(models.Opportunity.id.in_(identifiers))
-            .values(is_baseline=False)
+            .values(**values)
         )
         return int(cast("CursorResult[Any]", result).rowcount)
 

@@ -21,7 +21,8 @@ class MemberHideRepository:
         self, discord_user_id: int, opportunity_id: UUID, *, reason: str | None = None
     ) -> bool:
         """Record a personal hide. Returns ``True`` when a new row was created."""
-        dialect = self._session.bind.dialect.name if self._session.bind is not None else ""
+        bind = self._session.get_bind()
+        dialect = bind.dialect.name if bind is not None else ""
         if dialect == "postgresql":
             stmt = (
                 pg_insert(models.MemberHide)

@@ -459,7 +459,7 @@ class AdminCommands(commands.Cog):
 
     @source.command(
         name="release-baseline",
-        description="Move part of a source's initial import into the review queue",
+        description="Move part of a source's initial import into review or publish",
     )
     @app_commands.describe(
         name="The source identifier from /acm-admin source list",
@@ -474,13 +474,15 @@ class AdminCommands(commands.Cog):
         """Release backlog deliberately, in bounded batches.
 
         Newest first, because the oldest entries in a source's back catalogue
-        are the least likely to still be open.
+        are the least likely to still be open. Auto-publish sources go straight
+        to the publish queue; manual-review sources get review cards.
         """
         await interaction.response.defer(ephemeral=True, thinking=True)
         source_name = name.strip()
 
         async with self.bot.database.session() as session:
             held = await OpportunityRepository(session).count_baseline(source_name)
+            policy = await SourceRepository(session).policy(source_name)
 
         if not held:
             await interaction.followup.send(
@@ -489,20 +491,25 @@ class AdminCommands(commands.Cog):
             )
             return
 
+        auto = policy is PublicationPolicy.AUTO_PUBLISH
+        destination = "publish queue" if auto else "review queue"
+
         async def run() -> str:
             async with self.bot.database.session() as session:
                 released = await OpportunityRepository(session).release_baseline(
-                    source_name, limit=count
+                    source_name, limit=count, auto_approve=auto
                 )
             logger.info(
                 "source.baseline_released",
                 source=source_name,
                 released=released,
+                auto_approve=auto,
                 officer_id=interaction.user.id,
             )
             return (
                 f"Released {released} opportunit{'y' if released == 1 else 'ies'} into the "
-                "review queue. Review cards are posted in batches on the next cycle."
+                f"{destination}. They post in batches on the next cycle "
+                f"(or run `/acm-admin sync`)."
             )
 
         view = ConfirmationView(
@@ -510,7 +517,7 @@ class AdminCommands(commands.Cog):
         )
         message = await interaction.followup.send(
             f"`{truncate(source_name, 64)}` is holding **{held}** baseline opportunities. "
-            f"Releasing up to **{count}** queues them for officer review.",
+            f"Releasing up to **{count}** sends them to the **{destination}**.",
             view=view,
             ephemeral=True,
             wait=True,
