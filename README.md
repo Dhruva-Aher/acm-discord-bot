@@ -358,7 +358,7 @@ prefix commands such as `!opportunities`, and a test asserts none exist.
    findings are approved and posted to `#opportunities` without an officer
    click. Baseline catalogues are still held back so the first run cannot flood
    the channel.
-3. Members press **Report link** on a published post:
+3. Members press **Report** on a published post:
    - **Hide for me** — removed from that member's browse and digest only.
    - **Remove for everyone** — closed for the chapter; Discord messages marked
      `[CLOSED]`.
