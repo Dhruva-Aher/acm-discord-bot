@@ -81,8 +81,8 @@ class Source(Base):
     publication_policy: Mapped[PublicationPolicy] = mapped_column(
         _enum(PublicationPolicy, "publication_policy"),
         nullable=False,
-        default=PublicationPolicy.MANUAL_REVIEW,
-        server_default=PublicationPolicy.MANUAL_REVIEW.value,
+        default=PublicationPolicy.AUTO_PUBLISH,
+        server_default=PublicationPolicy.AUTO_PUBLISH.value,
     )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
@@ -299,6 +299,26 @@ class Subscription(Base):
         nullable=False,
         server_default=sa.func.now(),
         onupdate=sa.func.now(),
+    )
+
+
+class MemberHide(Base):
+    """A posting one member has hidden from their own browse results.
+
+    Used when a link looks wrong for them personally without removing it for
+    the whole chapter. Global removals close the opportunity instead.
+    """
+
+    __tablename__ = "member_hides"
+    __table_args__ = (sa.Index("ix_member_hides_opportunity_id", "opportunity_id"),)
+
+    discord_user_id: Mapped[int] = mapped_column(sa.BigInteger, primary_key=True)
+    opportunity_id: Mapped[UUID] = mapped_column(
+        sa.ForeignKey("opportunities.id", ondelete="CASCADE"), primary_key=True
+    )
+    reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
     )
 
 

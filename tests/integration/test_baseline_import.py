@@ -58,8 +58,11 @@ class TestFirstRunIsBaseline:
         assert stats.new == 1
 
         async with database.session() as session:
-            queued = await OpportunityRepository(session).list_awaiting_queue(100)
+            # Default auto-publish: news is approved for the publish pass, not
+            # left in the officer review queue.
+            queued = await OpportunityRepository(session).list_awaiting_publication(100)
         assert [row.application_url for row in queued] == ["https://example.com/fresh"]
+        assert queued[0].status is OpportunityStatus.APPROVED
 
     async def test_initialization_state_is_persisted_not_inferred_from_a_date(
         self, database: Database, records: list[RawOpportunity]

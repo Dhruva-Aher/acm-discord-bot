@@ -1,8 +1,7 @@
 """Source trust policy.
 
-The property being protected is that auto-publishing is only ever the result of
-someone deliberately choosing it for a named source. It is never the default,
-never inferred from the source's identity, and never a consequence of deploying.
+New sources default to auto-publish. Officers can still force manual review per
+source. Auto-publish of *baseline* catalogues remains forbidden.
 """
 
 from __future__ import annotations
@@ -22,21 +21,18 @@ async def counts(database: Database) -> dict[OpportunityStatus, int]:
 
 
 class TestDefaults:
-    async def test_a_newly_registered_source_requires_manual_review(
-        self, database: Database
-    ) -> None:
+    async def test_a_newly_registered_source_auto_publishes(self, database: Database) -> None:
         await OpportunityPipeline(database).run(StubCollector([make_raw()]))
 
         async with database.session() as session:
             source = await SourceRepository(session).get("stub")
         assert source is not None
-        assert source.publication_policy is PublicationPolicy.MANUAL_REVIEW
+        assert source.publication_policy is PublicationPolicy.AUTO_PUBLISH
 
-    async def test_an_unregistered_source_reads_as_manual_review(self, database: Database) -> None:
-        """A missing row must never be a route to publishing without review."""
+    async def test_an_unregistered_source_reads_as_auto_publish(self, database: Database) -> None:
         async with database.session() as session:
             policy = await SourceRepository(session).policy("never-seen")
-        assert policy is PublicationPolicy.MANUAL_REVIEW
+        assert policy is PublicationPolicy.AUTO_PUBLISH
 
     async def test_re_registering_does_not_reset_a_chosen_policy(self, database: Database) -> None:
         """A redeploy must not silently undo an officer's decision."""

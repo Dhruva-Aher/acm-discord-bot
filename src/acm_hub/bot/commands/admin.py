@@ -54,8 +54,8 @@ TYPE_CHOICES = [
     for member in OpportunityType
 ]
 POLICY_CHOICES = [
-    app_commands.Choice(name="Manual review (default)", value=PublicationPolicy.MANUAL_REVIEW),
-    app_commands.Choice(name="Auto-publish", value=PublicationPolicy.AUTO_PUBLISH),
+    app_commands.Choice(name="Auto-publish (default)", value=PublicationPolicy.AUTO_PUBLISH),
+    app_commands.Choice(name="Manual review", value=PublicationPolicy.MANUAL_REVIEW),
     app_commands.Choice(name="Disabled", value=PublicationPolicy.DISABLED),
 ]
 

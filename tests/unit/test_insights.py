@@ -93,6 +93,7 @@ class TestMemberActionView:
         assert "Apply" in labels
         assert "Resume check" in labels
         assert "Company prep" in labels
+        assert "Report link" in labels
         apply = next(
             item
             for item in view.children

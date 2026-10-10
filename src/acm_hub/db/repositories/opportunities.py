@@ -568,16 +568,29 @@ class OpportunityRepository:
     #: them would make the very first weeks of the bot look empty.
     MEMBER_VISIBLE_STATUSES = (OpportunityStatus.PUBLISHED,)
 
-    def _member_visible(self, filters: OpportunityFilters) -> Select[Any]:
-        return apply_filters(
+    def _member_visible(
+        self,
+        filters: OpportunityFilters,
+        *,
+        exclude_ids: Sequence[UUID] | frozenset[UUID] | set[UUID] | None = None,
+    ) -> Select[Any]:
+        query = apply_filters(
             sa.select(models.Opportunity).where(
                 models.Opportunity.status.in_(self.MEMBER_VISIBLE_STATUSES)
             ),
             filters,
         )
+        if exclude_ids:
+            query = query.where(models.Opportunity.id.notin_(list(exclude_ids)))
+        return query
 
     async def search_published(
-        self, filters: OpportunityFilters, *, limit: int, offset: int = 0
+        self,
+        filters: OpportunityFilters,
+        *,
+        limit: int,
+        offset: int = 0,
+        exclude_ids: Sequence[UUID] | frozenset[UUID] | set[UUID] | None = None,
     ) -> list[models.Opportunity]:
         """One page of published opportunities matching ``filters``.
 
@@ -589,29 +602,37 @@ class OpportunityRepository:
         Without the tiebreaker two rows discovered in the same batch share a
         timestamp, their relative order is undefined, and a member paging
         forward can see the same posting twice or miss one.
+
+        ``exclude_ids`` drops postings one member has personally hidden.
         """
         result = await self._session.execute(
-            self._member_visible(filters)
+            self._member_visible(filters, exclude_ids=exclude_ids)
             .order_by(models.Opportunity.discovered_at.desc(), models.Opportunity.id.desc())
             .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all())
 
-    async def count_published(self, filters: OpportunityFilters) -> int:
+    async def count_published(
+        self,
+        filters: OpportunityFilters,
+        *,
+        exclude_ids: Sequence[UUID] | frozenset[UUID] | set[UUID] | None = None,
+    ) -> int:
         """How many published opportunities match ``filters``.
 
         Counted in SQL so the paginator can show "page 2 of 9" without
         fetching page 9.
         """
-        result = await self._session.execute(
-            apply_filters(
-                sa.select(sa.func.count())
-                .select_from(models.Opportunity)
-                .where(models.Opportunity.status.in_(self.MEMBER_VISIBLE_STATUSES)),
-                filters,
-            )
+        query = apply_filters(
+            sa.select(sa.func.count())
+            .select_from(models.Opportunity)
+            .where(models.Opportunity.status.in_(self.MEMBER_VISIBLE_STATUSES)),
+            filters,
         )
+        if exclude_ids:
+            query = query.where(models.Opportunity.id.notin_(list(exclude_ids)))
+        result = await self._session.execute(query)
         return int(result.scalar_one())
 
     async def open_canonical_keys(self, source_name: str) -> dict[str, UUID]:

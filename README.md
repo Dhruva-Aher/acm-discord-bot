@@ -36,10 +36,9 @@ Right now (Milestones 1–7):
   a source does not dump thousands of review cards on officers. Closures are
   inferred only from a complete, plausible snapshot, never from a failed or
   truncated feed, and published messages are edited in place to `[CLOSED]`.
-- Posts each new (non-baseline) opportunity to a **private officer review
-  channel** with Approve / Reject / Open Source buttons, unless an officer has
-  explicitly set that source to auto-publish. Nothing reaches members until
-  then.
+- **Auto-publishes** new (non-baseline) findings by default. Officers can still
+  set a noisy source to manual review. Members report dead application links
+  with **Report link** → **Hide for me** or **Remove for everyone**.
 - Lets members browse with `/acm opportunities`, `/acm research` and
   `/acm conferences`, download a self-contained HTML digest with `/acm digest`,
   save interests with `/acm subscribe`, and page through results that only they
@@ -47,8 +46,8 @@ Right now (Milestones 1–7):
 - On each published opportunity, adds a **Stand out** panel: same-day freshness,
   focus tags from the listing + ACM SIGs (not a JD dump), and search links for
   Reddit interview notes, LinkedIn recruiters, and ASU alumni at that company —
-  plus **Apply** and research buttons. ACM Hub never invents who got hired or
-  which skills interviewers want.
+  plus **Apply**, **Resume check**, **Company prep**, and **Report link**.
+  ACM Hub never invents who got hired or which skills interviewers want.
 
 ### A rule worth stating up front
 
@@ -353,30 +352,26 @@ Officer commands (hidden from members, and re-checked at runtime):
 All commands are Discord application (slash) commands. There are deliberately no
 prefix commands such as `!opportunities`, and a test asserts none exist.
 
-## Officer approval workflow
+## Publishing and dead-link reports
 
 1. A collection cycle discovers an opportunity and stores it as `discovered`.
-2. The scheduler posts a review card to the officer channel and the opportunity
-   becomes `pending_review`. The card shows the same facts members would see,
-   plus the classifier's SIG scores and matched terms, and how much ACM Hub
-   actually verified.
-3. An officer presses a button:
-   - **Approve** → recorded, published to `#opportunities`, marked `published`.
-   - **Reject** → a modal asks for an optional reason; the opportunity is marked
-     `rejected` and is **never re-queued**, even if the upstream posting changes.
-   - **Open Source** → a plain link to the upstream source.
-4. The card is stamped with the decision and its buttons are removed.
-5. `/acm-admin reconsider <id>` is the supported way to undo a rejection. The
-   original `review_actions` row stays; the opportunity goes back to
-   `discovered` so a new card can be posted.
+2. With the default **auto-publish** policy (and after baseline import), new
+   findings are approved and posted to `#opportunities` without an officer
+   click. Baseline catalogues are still held back so the first run cannot flood
+   the channel.
+3. Members press **Report link** on a published post:
+   - **Hide for me** — removed from that member's browse and digest only.
+   - **Remove for everyone** — closed for the chapter; Discord messages marked
+     `[CLOSED]`.
+4. Officers can still set a source to `manual_review` and use `/acm-admin`
+   approve / reject / reconsider when a feed needs a gate.
 
-**Bulk approve.** `/acm-admin bulk-approve` always previews and requires a
-second press. The batch size is capped. Each approval is an individual audit
-row; a rate-limit on the fifth post does not hide the four that succeeded.
+**Bulk approve.** Still available for sources on manual review. Always previews
+and requires a second press. The batch size is capped.
 
-**Source policy.** New sources are `manual_review`. Auto-publish is never the
-default and is never inferred from the source's name. An initial import is
-never auto-published even if the policy is already `auto_publish`.
+**Source policy.** New sources are `auto_publish`. Officers can switch a noisy
+source to `manual_review` or `disabled`. An initial import is never
+auto-published even when the policy is already `auto_publish`.
 
 **Idempotency.** Two officers pressing Approve at the same instant produce one
 decision and one post. The decision is a conditional `UPDATE` restricted to

@@ -29,6 +29,7 @@ from acm_hub.bot.views import Page, PaginatedView
 from acm_hub.config.sigs import SIG_NAMES
 from acm_hub.db import models
 from acm_hub.db.repositories.collector_runs import CollectorRunRepository
+from acm_hub.db.repositories.hides import MemberHideRepository
 from acm_hub.db.repositories.opportunities import OpportunityFilters, OpportunityRepository
 from acm_hub.db.repositories.sources import SourceRepository
 from acm_hub.db.repositories.subscriptions import SubscriptionRepository
@@ -226,11 +227,15 @@ class AcmCommands(commands.Cog):
 
         async def fetch(offset: int) -> Page[models.Opportunity]:
             async with self.bot.database.session() as session:
+                hidden = await MemberHideRepository(session).hidden_ids(interaction.user.id)
                 repository = OpportunityRepository(session)
                 items = await repository.search_published(
-                    filters, limit=RESULTS_PER_PAGE, offset=offset
+                    filters,
+                    limit=RESULTS_PER_PAGE,
+                    offset=offset,
+                    exclude_ids=hidden,
                 )
-                total = await repository.count_published(filters)
+                total = await repository.count_published(filters, exclude_ids=hidden)
             return Page(items=items, total=total, offset=offset, page_size=RESULTS_PER_PAGE)
 
         page = await fetch(0)
@@ -406,10 +411,11 @@ class AcmCommands(commands.Cog):
             filters, personalized = await self._personalized_filters(interaction.user.id)
 
         async with self.bot.database.session() as session:
+            hidden = await MemberHideRepository(session).hidden_ids(interaction.user.id)
             repository = OpportunityRepository(session)
-            total = await repository.count_published(filters)
+            total = await repository.count_published(filters, exclude_ids=hidden)
             rows = await repository.search_published(
-                filters, limit=DEFAULT_DIGEST_LIMIT, offset=0
+                filters, limit=DEFAULT_DIGEST_LIMIT, offset=0, exclude_ids=hidden
             )
             sources = await SourceRepository(session).list_all()
 

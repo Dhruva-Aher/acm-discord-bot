@@ -56,23 +56,24 @@ class SourceRepository:
             name=name,
             display_name=display_name,
             source_url=source_url,
-            publication_policy=PublicationPolicy.MANUAL_REVIEW,
+            publication_policy=PublicationPolicy.AUTO_PUBLISH,
         )
         self._session.add(created)
         await self._session.flush()
         return created
 
     async def policy(self, name: str) -> PublicationPolicy:
-        """The source's trust policy, defaulting to the safe one.
+        """The source's trust policy, defaulting to auto-publish.
 
-        An unregistered source is treated as ``MANUAL_REVIEW`` rather than as
-        an error, so a missing row can never cause auto-publishing.
+        An unregistered source is treated as ``AUTO_PUBLISH`` so new collectors
+        surface findings without an officer gate. Officers can still set
+        ``manual_review`` per source when a feed is noisy.
         """
         result = await self._session.execute(
             sa.select(models.Source.publication_policy).where(models.Source.name == name)
         )
         found = result.scalar_one_or_none()
-        return found if found is not None else PublicationPolicy.MANUAL_REVIEW
+        return found if found is not None else PublicationPolicy.AUTO_PUBLISH
 
     async def set_policy(self, name: str, policy: PublicationPolicy) -> bool:
         """Change a source's trust policy.
